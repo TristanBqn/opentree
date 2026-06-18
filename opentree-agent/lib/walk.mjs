@@ -24,7 +24,7 @@ export async function walkDir(absPath, opts, displayPath = opts.rootName) {
   entries.sort((a, b) => a.name.localeCompare(b.name));
   for (const ent of entries) {
     if (ent.isDirectory() && opts.exclude.has(ent.name)) continue;
-    if (ent.name.startsWith(".git")) continue;
+    if (ent.isDirectory() && ent.name.startsWith(".git")) continue;
     const childAbs = join(absPath, ent.name);
     const childDisplay = displayPath + "/" + ent.name;
     if (ent.isDirectory()) {
