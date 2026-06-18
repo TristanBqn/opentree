@@ -50,7 +50,7 @@ export function placeOrigins(count) {
   const ring = count - 1;
   const R = 26;
   for (let i = 0; i < ring; i++) {
-    const a = (i / Math.max(1, ring)) * Math.PI * 2 + 0.4;
+    const a = (i / Math.max(1, ring)) * Math.PI * 2 + 0.4; // 0.4 rad: avoid placing the first ring island on the +X axis
     out.push([Math.round(Math.cos(a) * R), 0, Math.round(Math.sin(a) * R)]);
   }
   return out.slice(0, count);
@@ -75,7 +75,7 @@ export async function hostStats() {
   const mem = (os.totalmem() / 1073741824).toFixed(1).replace(".", ",");
   const stats = `${os.cpus().length} vCPU · ${mem} Gi · ${os.type()} ${os.release()}`;
   const disk = await dfRoot();
-  return { stats, ports: disk || "host" };
+  return { stats, ports: disk || "disque indisponible" };
 }
 
 async function tagAndAnnotate(island, nowMs) {
