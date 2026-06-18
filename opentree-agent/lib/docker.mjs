@@ -152,7 +152,7 @@ export function execFind(containerId, dir) {
         "%y\\t%s\\t%T@\\t%p\\n",
       ],
       { timeout: 6000, maxBuffer: 8 * 1024 * 1024 },
-      (err, stdout) => resolve(stdout || ""),
+      (_err, stdout) => resolve(stdout || ""),
     );
   });
 }
