@@ -67,6 +67,7 @@ test("applyUsage prefers events over mtime and sets uses + git", () => {
     b = tree.children[1];
   assert.equal(a.uses, 1); // from event, not mtime
   assert.equal(a.usage30[29], 1);
+  assert.equal(a.usage30[19], 0); // mtime bucket is zero (event replaced it)
   assert.equal(b.uses, 1); // fallback to mtime
   assert.equal(b.git, "modified");
 });

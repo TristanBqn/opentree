@@ -49,5 +49,7 @@ export function applyUsage(node, eventsMap, nowMs) {
     node.git = gitProxy(node.mtime, nowMs);
     return;
   }
-  for (const c of node.children) applyUsage(c, eventsMap, nowMs);
+  if (node.children) {
+    for (const c of node.children) applyUsage(c, eventsMap, nowMs);
+  }
 }
