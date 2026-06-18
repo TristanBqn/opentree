@@ -68,3 +68,9 @@ test("parseFindOutput builds a nested tree", () => {
   assert.equal(dist.children[0].name, "server.js");
   assert.equal(dist.children[0].ext, "js");
 });
+
+test("parseFindOutput returns an empty root for empty input", () => {
+  const tree = parseFindOutput("", "c1:/app", () => 0);
+  assert.equal(tree.type, "dir");
+  assert.equal(tree.children.length, 0);
+});

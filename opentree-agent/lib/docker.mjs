@@ -64,7 +64,7 @@ export function parseFindOutput(text, rootName, nextId) {
   };
   const lines = text
     .split("\n")
-    .map((l) => l.trim())
+    .map((l) => l.replace(/\r$/, ""))
     .filter(Boolean);
   if (!lines.length) return root;
   const absRoot = lines[0].split("\t")[3]; // first find row is the search dir itself
@@ -152,7 +152,7 @@ export function execFind(containerId, dir) {
         "%y\\t%s\\t%T@\\t%p\\n",
       ],
       { timeout: 6000, maxBuffer: 8 * 1024 * 1024 },
-      (err, stdout) => resolve(err ? "" : stdout),
+      (err, stdout) => resolve(stdout || ""),
     );
   });
 }
