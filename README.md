@@ -17,9 +17,11 @@ not run build scripts.
 
 ## Rebuild after changing the source
 
-Only needed if you edit `src/*.ts`:
+Only needed if you edit `src/*.ts`. Build-time deps are intentionally NOT declared
+in `package.json` (so `openclaw plugins install` installs nothing and the host
+provides `openclaw` via the peer link). Install them locally without saving:
 
-    npm install        # OpenClaw SDK + @types/node (dev only, for typecheck/build)
+    npm install --no-save openclaw @types/node
     npm run build      # tsc -> dist/index.js (then commit dist/)
 
 ## Protect with a password
