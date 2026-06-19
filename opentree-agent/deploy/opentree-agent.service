@@ -8,6 +8,7 @@ WorkingDirectory=%h/opentree-agent
 ExecStart=/usr/bin/env node %h/opentree-agent/opentree-agent.mjs
 Restart=always
 RestartSec=3
+EnvironmentFile=-%h/opentree-agent/.env
 Environment=OPENTREE_PORT=7070
 
 [Install]

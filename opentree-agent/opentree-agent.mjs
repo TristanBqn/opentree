@@ -7,7 +7,7 @@ import { buildSnapshot } from "./lib/snapshot.mjs";
 import { startWatcher } from "./lib/watcher.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PORT = parseInt(process.env.OPENTREE_PORT || "7070", 10);
+const PORT = parseInt(process.env.OPENTREE_PORT ?? "7070", 10) || 7070;
 const HOST_ROOT = process.env.OPENTREE_HOST_ROOT || join(homedir(), "openclaw");
 const HOST_NAME = process.env.OPENTREE_HOST_NAME || "~/openclaw";
 const STATIC_DIR = resolve(
@@ -27,7 +27,7 @@ const getSnapshot = () =>
     now: Date.now(),
   });
 
-startWatcher({
+const watcher = startWatcher({
   absRoot: HOST_ROOT,
   rootName: HOST_NAME,
   eventsPath: join(DATA_DIR, "events.ndjson"),
@@ -39,3 +39,10 @@ server.listen(PORT, "127.0.0.1", () => {
     `[opentree] http://127.0.0.1:${PORT}  (host=${HOST_ROOT}, static=${STATIC_DIR})`,
   );
 });
+
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    watcher?.close?.();
+    server.close(() => process.exit(0));
+  });
+}
