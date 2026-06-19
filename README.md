@@ -3,22 +3,24 @@
 Serves the OpenTree architecture visualiser through the OpenClaw gateway,
 behind the gateway password, reachable from your own devices over Tailscale.
 
-## Build
+## Install (one command)
 
-    cd opentree-agent
-    npm install        # installs the OpenClaw SDK dev dependency
-    npm run build      # copies inspector/ into viewer/ then emits dist/index.js (the plugin entry is self-contained)
+This repository **is** the plugin package: the manifest (`openclaw.plugin.json`),
+`package.json`, the prebuilt entry (`dist/index.js`) and the viewer (`inspector/`)
+all live at the repo root, so OpenClaw can install it straight from git:
 
-## Install on the VPS
+    openclaw plugins install git:github.com/TristanBqn/opentree
 
-The plugin entry is `dist/index.js` (declared in `package.json` → `openclaw.extensions`).
-Install it into the running OpenClaw on the Hetzner host:
+The plugin has no runtime dependencies (the `openclaw/plugin-sdk` import is provided
+by the host gateway). `dist/` is committed because `openclaw plugins install` does
+not run build scripts.
 
-    openclaw plugins install <path-or-clawhub-or-git-spec>
+## Rebuild after changing the source
 
-(Local path install is the simplest here. ClawHub publishing additionally
-requires `openclaw.compat` and `openclaw.build` fields in `package.json` — out
-of scope for a private single-host deploy.)
+Only needed if you edit `src/*.ts`:
+
+    npm install        # OpenClaw SDK + @types/node (dev only, for typecheck/build)
+    npm run build      # tsc -> dist/index.js (then commit dist/)
 
 ## Protect with a password
 

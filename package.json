@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/copy-viewer.mjs && tsc",
+    "build": "tsc",
     "test": "npm run build && node --test"
   },
   "openclaw": {

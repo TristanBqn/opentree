@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { apiUrl } from "../../inspector/data.js";
+import { apiUrl } from "../inspector/data.js";
 
 test("resolves api path under a gateway prefix with a filename", () => {
   assert.equal(
