@@ -1,6 +1,6 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { join, normalize } from "node:path";
+import { resolve, sep } from "node:path";
 
 const MIME = {
   html: "text/html; charset=utf-8",
@@ -36,18 +36,27 @@ export function createServer({ staticDir, getSnapshot }) {
       return;
     }
 
-    const rel = normalize(url === "/" ? "/OpenTree.html" : url).replace(
-      /^(\.\.[/\\])+/,
-      "",
-    );
-    if (rel.includes("..")) {
+    const safeRoot = resolve(staticDir);
+    const reqPath = url === "/" ? "/OpenTree.html" : decodeURIComponent(url);
+    let abs;
+    try {
+      abs = resolve(
+        safeRoot,
+        "." + (reqPath.startsWith("/") ? reqPath : "/" + reqPath),
+      );
+    } catch {
+      res.writeHead(404);
+      res.end("not found");
+      return;
+    }
+    if (abs !== safeRoot && !abs.startsWith(safeRoot + sep)) {
       res.writeHead(404);
       res.end("not found");
       return;
     }
     try {
-      const buf = await readFile(join(staticDir, rel));
-      res.writeHead(200, { "content-type": mimeFor(rel) });
+      const buf = await readFile(abs);
+      res.writeHead(200, { "content-type": mimeFor(abs) });
       res.end(buf);
     } catch {
       res.writeHead(404);

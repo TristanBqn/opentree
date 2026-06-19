@@ -3,12 +3,26 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import net from "node:net";
 import { createServer } from "../lib/server.mjs";
 
 function listen(server) {
   return new Promise((res) =>
     server.listen(0, "127.0.0.1", () => res(server.address().port)),
   );
+}
+
+function rawGet(port, target) {
+  return new Promise((resolve) => {
+    const sock = net.connect(port, "127.0.0.1", () => {
+      sock.write(
+        `GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`,
+      );
+    });
+    let buf = "";
+    sock.on("data", (d) => (buf += d));
+    sock.on("end", () => resolve(buf));
+  });
 }
 
 test("GET /api/snapshot returns the snapshot JSON", async () => {
@@ -64,5 +78,18 @@ test("blocks path traversal", async () => {
   const port = await listen(server);
   const r = await fetch(`http://127.0.0.1:${port}/../../etc/passwd`);
   assert.equal(r.status, 404);
+  server.close();
+});
+
+test("blocks raw path traversal that fetch would normalise away", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-rawtrav-"));
+  const server = createServer({
+    staticDir: dir,
+    getSnapshot: async () => ({}),
+  });
+  const port = await listen(server);
+  const resp = await rawGet(port, "/../../../../../../etc/passwd");
+  assert.match(resp.split("\r\n")[0], /404/);
+  assert.ok(!resp.includes("root:"));
   server.close();
 });
