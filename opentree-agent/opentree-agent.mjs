@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { createServer } from "./lib/server.mjs";
 import { buildSnapshot } from "./lib/snapshot.mjs";
 import { startWatcher } from "./lib/watcher.mjs";
+import { createSnapshotCache } from "./lib/cache.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.OPENTREE_PORT ?? "7070", 10) || 7070;
@@ -25,14 +26,16 @@ process.on("unhandledRejection", (err) =>
 
 await mkdir(DATA_DIR, { recursive: true });
 
-const getSnapshot = () =>
-  buildSnapshot({
-    hostRoot: HOST_ROOT,
-    hostName: HOST_NAME,
-    dataDir: DATA_DIR,
-    socketPath: SOCKET,
-    now: Date.now(),
-  });
+const cache = createSnapshotCache({
+  build: () =>
+    buildSnapshot({
+      hostRoot: HOST_ROOT,
+      hostName: HOST_NAME,
+      dataDir: DATA_DIR,
+      socketPath: SOCKET,
+      now: Date.now(),
+    }),
+});
 
 const watcher = startWatcher({
   absRoot: HOST_ROOT,
@@ -40,7 +43,7 @@ const watcher = startWatcher({
   eventsPath: join(DATA_DIR, "events.ndjson"),
 });
 
-const server = createServer({ staticDir: STATIC_DIR, getSnapshot });
+const server = createServer({ staticDir: STATIC_DIR, cache });
 server.listen(PORT, "127.0.0.1", () => {
   console.log(
     `[opentree] http://127.0.0.1:${PORT}  (host=${HOST_ROOT}, static=${STATIC_DIR})`,

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 import { createServer } from "../lib/server.mjs";
+import { createSnapshotCache } from "../lib/cache.mjs";
 
 function listen(server) {
   return new Promise((res) =>
@@ -26,10 +27,10 @@ function rawGet(port, target) {
 }
 
 test("GET /api/snapshot returns the snapshot JSON", async () => {
-  const server = createServer({
-    staticDir: tmpdir(),
-    getSnapshot: async () => ({ generatedAt: 42, islands: [] }),
+  const cache = createSnapshotCache({
+    build: async () => ({ generatedAt: 42, islands: [] }),
   });
+  const server = createServer({ staticDir: tmpdir(), cache });
   const port = await listen(server);
   const r = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
   const body = await r.json();
@@ -39,12 +40,12 @@ test("GET /api/snapshot returns the snapshot JSON", async () => {
 });
 
 test("GET /api/snapshot degrades to empty islands when builder throws", async () => {
-  const server = createServer({
-    staticDir: tmpdir(),
-    getSnapshot: async () => {
+  const cache = createSnapshotCache({
+    build: async () => {
       throw new Error("docker down");
     },
   });
+  const server = createServer({ staticDir: tmpdir(), cache });
   const port = await listen(server);
   const r = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
   const body = await r.json();
@@ -56,10 +57,8 @@ test("GET /api/snapshot degrades to empty islands when builder throws", async ()
 test("serves static files and 404s unknown paths", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ot-static-"));
   await writeFile(join(dir, "OpenTree.html"), "<html>ok</html>");
-  const server = createServer({
-    staticDir: dir,
-    getSnapshot: async () => ({}),
-  });
+  const cache = createSnapshotCache({ build: async () => ({}) });
+  const server = createServer({ staticDir: dir, cache });
   const port = await listen(server);
   const ok = await fetch(`http://127.0.0.1:${port}/OpenTree.html`);
   assert.equal(ok.status, 200);
@@ -71,10 +70,8 @@ test("serves static files and 404s unknown paths", async () => {
 
 test("blocks path traversal", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ot-trav-"));
-  const server = createServer({
-    staticDir: dir,
-    getSnapshot: async () => ({}),
-  });
+  const cache = createSnapshotCache({ build: async () => ({}) });
+  const server = createServer({ staticDir: dir, cache });
   const port = await listen(server);
   const r = await fetch(`http://127.0.0.1:${port}/../../etc/passwd`);
   assert.equal(r.status, 404);
@@ -83,10 +80,8 @@ test("blocks path traversal", async () => {
 
 test("blocks raw path traversal that fetch would normalise away", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ot-rawtrav-"));
-  const server = createServer({
-    staticDir: dir,
-    getSnapshot: async () => ({}),
-  });
+  const cache = createSnapshotCache({ build: async () => ({}) });
+  const server = createServer({ staticDir: dir, cache });
   const port = await listen(server);
   const resp = await rawGet(port, "/../../../../../../etc/passwd");
   assert.match(resp.split("\r\n")[0], /404/);
@@ -96,10 +91,8 @@ test("blocks raw path traversal that fetch would normalise away", async () => {
 
 test("malformed percent-encoding does not crash the server", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ot-malformed-"));
-  const server = createServer({
-    staticDir: dir,
-    getSnapshot: async () => ({}),
-  });
+  const cache = createSnapshotCache({ build: async () => ({}) });
+  const server = createServer({ staticDir: dir, cache });
   const port = await listen(server);
   const resp1 = await rawGet(port, "/%E0%A4%A");
   assert.match(resp1.split("\r\n")[0], /HTTP\/1\.1 \d\d\d/);
