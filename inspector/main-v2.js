@@ -8,7 +8,7 @@ import {
   langOf,
   snippet,
 } from "./content.js";
-import { fetchArchitecture } from "./data.js";
+import { fetchArchitecture, refreshArchitecture } from "./data.js";
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage");
@@ -195,6 +195,20 @@ $("#search-clear").addEventListener("click", () => {
 $("#isolate-clear").addEventListener("click", () => scene.resetView());
 $("#reset-view").addEventListener("click", () => {
   scene.resetView();
+});
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  if (btn.classList.contains("busy")) return;
+  btn.classList.add("busy");
+  btn.disabled = true;
+  try {
+    await refreshArchitecture();
+    location.reload();
+  } catch (err) {
+    console.error("[opentree] refresh failed:", err);
+    btn.classList.remove("busy");
+    btn.disabled = false;
+  }
 });
 
 // ---- settings popover ---------------------------------------------------------

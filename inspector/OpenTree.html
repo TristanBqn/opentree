@@ -677,6 +677,10 @@
       .icon-btn:hover {
         color: var(--accent);
       }
+      .icon-btn.busy {
+        opacity: 0.5;
+        pointer-events: none;
+      }
       .icon-btn svg {
         width: 17px;
         height: 17px;
@@ -1319,6 +1323,13 @@
         />
         <button id="search-clear">×</button>
       </div>
+      <button
+        class="icon-btn"
+        id="refresh-btn"
+        title="Mettre à jour les données"
+      >
+        ⟳
+      </button>
       <button class="icon-btn" id="reset-view" title="Recentrer (Échap)">
         <svg
           viewBox="0 0 24 24"
