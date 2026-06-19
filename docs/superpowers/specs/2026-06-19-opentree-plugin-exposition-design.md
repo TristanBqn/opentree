@@ -67,11 +67,39 @@ La logique métier reste en ESM JS (`lib/*.mjs`), importée par le wrapper TS.
 
 ### Routes (via `registerHttpRoute`)
 
-- `GET <prefix>/` + assets → fichiers statiques du viewer (logique reprise de `server.mjs`).
-- `GET <prefix>/api/snapshot` → snapshot **en cache** (réponse instantanée ; build paresseux si vide).
-- `POST <prefix>/api/refresh` → force un rebuild, met à jour le cache, renvoie le snapshot frais.
+Signature confirmée dans le source (`openclaw/openclaw:src/plugins/types.ts:2119-2146`) :
 
-Toutes héritent de `gateway.auth` → protégées par mot de passe sans code dédié.
+```ts
+type OpenClawPluginHttpRouteAuth = "gateway" | "plugin";
+type OpenClawPluginHttpRouteMatch = "exact" | "prefix";
+type OpenClawPluginHttpRouteHandler = (
+  req: IncomingMessage,
+  res: ServerResponse,
+) => Promise<boolean | void> | boolean | void;
+type OpenClawPluginHttpRouteParams = {
+  path: string;
+  handler: OpenClawPluginHttpRouteHandler;
+  auth: OpenClawPluginHttpRouteAuth;
+  match?: OpenClawPluginHttpRouteMatch;
+  handleUpgrade?;
+  nodeCapability?;
+  replaceExisting?;
+};
+```
+
+Le handler est un `(req, res)` Node http standard → la logique de `server.mjs` se branche
+quasi telle quelle. Routes :
+
+- `GET <prefix>/` + assets (`auth: "gateway"`, `match: "prefix"`) → fichiers statiques du viewer.
+- `GET <prefix>/api/snapshot` (`auth: "gateway"`, `match: "exact"`) → snapshot **en cache**
+  (réponse instantanée ; build paresseux si vide).
+- `POST <prefix>/api/refresh` (`auth: "gateway"`, `match: "exact"`) → force un rebuild, met à
+  jour le cache, renvoie le snapshot frais.
+
+`auth: "gateway"` fait hériter les routes de `gateway.auth.*` → protégées par mot de passe sans
+code dédié (valeur confirmée dans le source). Le préfixe `<prefix>` (ex. `/opentree`) est choisi
+par le plugin, pas imposé par le gateway. Modèle de référence : `extensions/canvas/` (UI web
+servie via le gateway).
 
 ### Couche de cache (`lib/cache.mjs`)
 
@@ -83,9 +111,21 @@ Toutes héritent de `gateway.auth` → protégées par mot de passe sans code d�
 
 ### Cycle de vie du watcher
 
-Le `fs.watch` récursif démarre à l'activation du plugin et se ferme à la désactivation,
-via les hooks de cycle de vie du SDK. Nom exact des hooks **à confirmer dans le plan**
-(non documenté côté doc publique).
+Confirmé dans le source (`src/plugins/types.ts:2356-2360`) :
+
+```ts
+type OpenClawPluginService = {
+  id: string;
+  start: (ctx: OpenClawPluginServiceContext) => void | Promise<void>;
+  stop?: (ctx: OpenClawPluginServiceContext) => void | Promise<void>;
+};
+// ctx fournit: { config, workspaceDir, stateDir, logger }
+```
+
+Le watcher est enregistré via `api.registerService({ id, start, stop })` : `start` ouvre le
+`fs.watch` récursif, `stop` le ferme. Le `ctx.stateDir` fourni par le SDK est l'emplacement
+propre où écrire `events.ndjson` (remplace le `.data` codé en dur dans
+`opentree-agent.mjs:16`).
 
 ### Bouton refresh (front)
 
@@ -120,13 +160,24 @@ Le gateway OpenClaw tourne déjà sur le VPS Hetzner (conteneur `gateway-1` dans
 - Nouveaux : module cache (build paresseux, force-refresh, invalidation) + rotation events.
 - Test d'intégration du wrapper si le SDK l'autorise.
 
-## Incertitudes à lever dans le plan (à ne pas inventer)
+## SDK confirmé (source `github.com/openclaw/openclaw`, lu via `gh` le 2026-06-19)
 
-1. Signatures exactes de `registerHttpRoute` et des hooks d'activation/désactivation
-   → à extraire du **code source du SDK** (la doc publique ne les détaille pas).
-2. Mécanisme exact pour servir des fichiers statiques via le SDK (handler manuel vs helper).
-3. Préfixe de route imposé/recommandé par le gateway.
-4. Forme d'installation supportée (`git:`, `clawhub:`) et tooling de build attendu côté plugin.
+Les incertitudes initiales sont levées par lecture directe du source :
+
+1. ✅ Signature `registerHttpRoute` → `src/plugins/types.ts:2119-2146` (voir section Routes).
+2. ✅ Cycle de vie → `registerService({ id, start, stop })`, `src/plugins/types.ts:2356-2360`.
+3. ✅ Fichiers statiques → handler `(req, res)` manuel + `match: "prefix"` (pas de helper dédié ;
+   on reprend la logique de `server.mjs`). Modèle : `extensions/canvas/index.ts`.
+4. ✅ Point d'entrée → `definePluginEntry({ id, name, description, configSchema, register })`
+   depuis `openclaw/plugin-sdk/plugin-entry` (cf. `extensions/canvas/index.ts`).
+5. ✅ Installation → `openclaw plugins install` (ClawHub en premier, fallback npm ;
+   formes `git:`/`clawhub:`/npm).
+
+### Reste à recouper au moment d'écrire le code (mineur)
+
+- Schéma exact du manifeste `openclaw.plugin.json` (champs `id`/`name`/`kind`/`activation`/
+  `configSchema`) → relire `docs/plugins/building-plugins` + un manifeste d'extension réel.
+- Node ≥ 22.19 requis pour le dev plugin (à vérifier vs runtime cible).
 
 ## Hors périmètre
 
