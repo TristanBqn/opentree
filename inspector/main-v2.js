@@ -94,12 +94,22 @@ const callbacks = {
   },
 };
 
-const snap = await fetchArchitecture();
-scene = createScene(stage, callbacks, snap.islands);
-const loadingEl = document.getElementById("loading");
-if (loadingEl) {
-  loadingEl.style.opacity = "0";
-  setTimeout(() => loadingEl.remove(), 300);
+try {
+  const snap = await fetchArchitecture();
+  scene = createScene(stage, callbacks, snap.islands);
+  const loadingEl = document.getElementById("loading");
+  if (loadingEl) {
+    loadingEl.style.opacity = "0";
+    setTimeout(() => loadingEl.remove(), 300);
+  }
+} catch (err) {
+  console.error(err);
+  const loadingEl = document.getElementById("loading");
+  if (loadingEl) {
+    loadingEl.textContent =
+      "Impossible de joindre l'agent OpenTree — vérifie qu'il tourne sur 127.0.0.1:7070";
+    loadingEl.style.opacity = "1";
+  }
 }
 
 // ---- legend ----------------------------------------------------------------

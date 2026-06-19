@@ -4,7 +4,7 @@ import {
   CSS2DRenderer,
   CSS2DObject,
 } from "three/addons/renderers/CSS2DRenderer.js";
-import { buildArchitecture, flatten, NOW } from "./data.js";
+import { flatten } from "./data.js";
 import { layout, translate, assignBranchesMulti } from "./layout.js";
 import { THEMES } from "./themes.js";
 
@@ -41,7 +41,7 @@ function glowTexture() {
   return t;
 }
 
-export function createScene(container, callbacks = {}) {
+export function createScene(container, callbacks = {}, islands = []) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
@@ -140,7 +140,6 @@ export function createScene(container, callbacks = {}) {
     pulseIntensity: 1,
     plates: true,
   };
-  const islands = buildArchitecture();
   islands.forEach((isl) => {
     layout(isl.root, { rootLen: isl.rootLen });
     translate(isl.root, isl.origin);

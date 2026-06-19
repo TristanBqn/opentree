@@ -8,6 +8,7 @@ import {
   langOf,
   snippet,
 } from "./content.js";
+import { fetchArchitecture } from "./data.js";
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage");
@@ -97,7 +98,8 @@ const callbacks = {
   },
 };
 
-scene = createScene(stage, callbacks);
+const snap = await fetchArchitecture();
+scene = createScene(stage, callbacks, snap.islands);
 
 // ---- legend ----------------------------------------------------------------
 function topNodeOf(node) {

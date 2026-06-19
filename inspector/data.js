@@ -5,6 +5,7 @@ export let NOW = Date.now();
 
 export async function fetchArchitecture() {
   const res = await fetch("/api/snapshot");
+  if (!res.ok) throw new Error("snapshot HTTP " + res.status);
   const snap = await res.json();
   NOW = snap.generatedAt || Date.now();
   return snap;
