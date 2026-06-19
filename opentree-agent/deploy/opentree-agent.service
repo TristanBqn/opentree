@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenTree architecture agent
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/opentree-agent
+ExecStart=/usr/bin/env node %h/opentree-agent/opentree-agent.mjs
+Restart=always
+RestartSec=3
+Environment=OPENTREE_PORT=7070
+
+[Install]
+WantedBy=default.target
