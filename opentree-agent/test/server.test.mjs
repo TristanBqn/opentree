@@ -93,3 +93,19 @@ test("blocks raw path traversal that fetch would normalise away", async () => {
   assert.ok(!resp.includes("root:"));
   server.close();
 });
+
+test("malformed percent-encoding does not crash the server", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-malformed-"));
+  const server = createServer({
+    staticDir: dir,
+    getSnapshot: async () => ({}),
+  });
+  const port = await listen(server);
+  const resp1 = await rawGet(port, "/%E0%A4%A");
+  assert.match(resp1.split("\r\n")[0], /HTTP\/1\.1 \d\d\d/);
+  const resp2 = await rawGet(port, "/%");
+  assert.match(resp2.split("\r\n")[0], /HTTP\/1\.1 \d\d\d/);
+  const ok = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
+  assert.equal(ok.status, 200);
+  server.close();
+});

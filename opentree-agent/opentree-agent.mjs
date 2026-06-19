@@ -16,6 +16,13 @@ const STATIC_DIR = resolve(
 const DATA_DIR = resolve(process.env.OPENTREE_DATA || join(here, ".data"));
 const SOCKET = process.env.DOCKER_SOCKET || "/var/run/docker.sock";
 
+process.on("uncaughtException", (err) =>
+  console.error("[opentree] uncaught:", err),
+);
+process.on("unhandledRejection", (err) =>
+  console.error("[opentree] unhandled rejection:", err),
+);
+
 await mkdir(DATA_DIR, { recursive: true });
 
 const getSnapshot = () =>

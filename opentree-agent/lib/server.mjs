@@ -37,9 +37,9 @@ export function createServer({ staticDir, getSnapshot }) {
     }
 
     const safeRoot = resolve(staticDir);
-    const reqPath = url === "/" ? "/OpenTree.html" : decodeURIComponent(url);
     let abs;
     try {
+      const reqPath = url === "/" ? "/OpenTree.html" : decodeURIComponent(url);
       abs = resolve(
         safeRoot,
         "." + (reqPath.startsWith("/") ? reqPath : "/" + reqPath),
