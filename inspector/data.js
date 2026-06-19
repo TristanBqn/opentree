@@ -3,9 +3,24 @@
 // updates it before the scene renders, so relative dates use the server clock.
 export let NOW = Date.now();
 
+export function apiUrl(path, pathname) {
+  const dir = pathname.replace(/[^/]*$/, "");
+  return dir + path;
+}
+
 export async function fetchArchitecture() {
-  const res = await fetch("/api/snapshot");
+  const res = await fetch(apiUrl("api/snapshot", location.pathname));
   if (!res.ok) throw new Error("snapshot HTTP " + res.status);
+  const snap = await res.json();
+  NOW = snap.generatedAt || Date.now();
+  return snap;
+}
+
+export async function refreshArchitecture() {
+  const res = await fetch(apiUrl("api/refresh", location.pathname), {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("refresh HTTP " + res.status);
   const snap = await res.json();
   NOW = snap.generatedAt || Date.now();
   return snap;
