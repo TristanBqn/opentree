@@ -7,7 +7,7 @@ behind the gateway password, reachable from your own devices over Tailscale.
 
     cd opentree-agent
     npm install        # installs the OpenClaw SDK dev dependency
-    npm run build      # emits dist/index.js (the plugin entry)
+    npm run build      # copies inspector/ into viewer/ then emits dist/index.js (the plugin entry is self-contained)
 
 ## Install on the VPS
 

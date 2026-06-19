@@ -13,7 +13,7 @@ export default definePluginEntry({
   description: "Architecture visualiser served through the gateway.",
   register(api) {
     registerOpenTree(api, {
-      staticDir: resolve(here, "..", "..", "inspector"),
+      staticDir: resolve(here, "..", "viewer"),
       hostRoot: process.env.OPENTREE_HOST_ROOT || join(homedir(), "openclaw"),
       hostName: process.env.OPENTREE_HOST_NAME || "~/openclaw",
       stateDir: process.env.OPENTREE_DATA || resolve(here, "..", ".data"),
