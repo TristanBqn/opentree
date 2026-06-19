@@ -1,0 +1,7 @@
+{
+  "id": "opentree",
+  "name": "OpenTree",
+  "description": "Architecture visualiser served through the gateway.",
+  "activation": { "onStartup": true },
+  "enabledByDefault": true
+}
