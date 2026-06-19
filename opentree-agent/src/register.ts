@@ -1,5 +1,8 @@
 import { join } from "node:path";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import type {
+  OpenClawPluginApi,
+  OpenClawPluginServiceContext,
+} from "openclaw/plugin-sdk/plugin-entry";
 import { createSnapshotCache } from "../lib/cache.mjs";
 import { createRequestHandler } from "../lib/handlers.mjs";
 import { buildSnapshot } from "../lib/snapshot.mjs";
@@ -14,13 +17,14 @@ type Deps = {
 };
 
 export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
-  const eventsPath = join(deps.stateDir, "events.ndjson");
+  let stateDir = deps.stateDir;
+
   const cache = createSnapshotCache({
     build: () =>
       buildSnapshot({
         hostRoot: deps.hostRoot,
         hostName: deps.hostName,
-        dataDir: deps.stateDir,
+        dataDir: stateDir,
         socketPath: deps.socketPath,
         now: Date.now(),
       }),
@@ -40,14 +44,18 @@ export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
   let watcher: { close: () => void } | null = null;
   api.registerService({
     id: "opentree-watcher",
-    start: (_ctx) => {
+    start: (ctx: OpenClawPluginServiceContext) => {
+      if (watcher) return;
+      stateDir = ctx.stateDir || deps.stateDir;
+      const eventsPath = join(stateDir, "events.ndjson");
       watcher = startWatcher({
         absRoot: deps.hostRoot,
         rootName: deps.hostName,
         eventsPath,
       });
     },
-    stop: (_ctx) => {
+    stop: (ctx: OpenClawPluginServiceContext) => {
+      void ctx;
       watcher?.close();
       watcher = null;
     },
