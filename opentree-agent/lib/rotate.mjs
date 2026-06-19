@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from "node:fs/promises";
+import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 
 const DAY = 86400000;
 
@@ -29,6 +29,11 @@ export async function rotateEventsFile(eventsPath, nowMs, retentionDays = 30) {
   }
   const filtered = filterRecentEvents(text, nowMs, retentionDays);
   const tmp = eventsPath + ".tmp";
-  await writeFile(tmp, filtered);
-  await rename(tmp, eventsPath);
+  try {
+    await writeFile(tmp, filtered);
+    await rename(tmp, eventsPath);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
+  }
 }
