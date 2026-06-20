@@ -3,5 +3,10 @@
   "name": "OpenTree",
   "description": "Architecture visualiser served through the gateway.",
   "activation": { "onStartup": true },
-  "enabledByDefault": true
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
 }
