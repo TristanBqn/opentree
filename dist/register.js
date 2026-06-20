@@ -16,7 +16,7 @@ export function registerOpenTree(api, deps) {
     });
     api.registerHttpRoute({
         path: "/opentree",
-        auth: "gateway",
+        auth: "plugin",
         match: "prefix",
         handler: createRequestHandler({
             staticDir: deps.staticDir,

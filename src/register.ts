@@ -32,7 +32,7 @@ export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
 
   api.registerHttpRoute({
     path: "/opentree",
-    auth: "gateway",
+    auth: "plugin",
     match: "prefix",
     handler: createRequestHandler({
       staticDir: deps.staticDir,
