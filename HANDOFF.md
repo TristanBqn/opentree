@@ -50,6 +50,10 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+⚠️ Indentation YAML : `environment:` et `volumes:` doivent être **imbriqués sous le service
+gateway** (même niveau que `image:`/`container_name:`), pas à la racine du fichier. S'ils
+existent déjà dans le service, ajouter seulement les lignes `-` manquantes.
+
 Recréer : `docker compose -f <compose> up -d` puis recharger `/opentree/`.
 
 > NB : sans binaire `docker` dans le conteneur, l'arbre INTERNE de chaque conteneur
@@ -81,11 +85,13 @@ Recréer : `docker compose -f <compose> up -d` puis recharger `/opentree/`.
    `opentree-agent/`, pas à la racine ; et l'install git scanne le code.
    → **Restructuration** : le plugin est devenu la racine du dépôt, `dist/` committé.
 
-2. **Scan « dangerous code patterns: child_process »** (sur l'install git) — bloque les
-   plugins utilisant `child_process` (`lib/snapshot.mjs` df, `lib/docker.mjs` exec).
-   → Contourné en passant en **install local** (non scannée pour ce motif). Le scan a
-   de toute façon été **retiré** dans OpenClaw récent (`--dangerously-force-unsafe-install`
-   est devenu no-op).
+2. **Scan « dangerous code patterns: child_process »** (sur la 1ère install git, bannière
+   2026.6.1) — bloquait les plugins utilisant `child_process` (`lib/snapshot.mjs` df,
+   `lib/docker.mjs` exec). → **Non-problème sur ta version** : ce scan a été **retiré**
+   dans OpenClaw 2026.6.8 (message explicite : `--dangerously-force-unsafe-install` est
+   devenu no-op « because built-in install-time dangerous-code scanning has been removed »).
+   Le code n'a pas eu à changer. (NB : on n'a jamais pu vérifier qu'une install locale
+   contournait ce motif — elle échouait sur acpx avant, cf. #3.)
 
 3. **`acpx` : « code safety scan failed »** — BLOQUE TOUTE install de plugin.
    Cause = symlink fantôme **dans l'install OpenClaw elle-même** :
@@ -94,9 +100,12 @@ Recréer : `docker compose -f <compose> up -d` puis recharger `/opentree/`.
    → Contourné par **install manuelle** : copie dans le dossier d'extensions global
    `~/.openclaw/extensions/opentree/` (chargé au démarrage du gateway, sans le scan d'install).
 
-4. **`peerDependency` vs `devDependency`** — `openclaw` en devDependency forçait un
-   `npm install` complet (→ acpx). → passé en **peerDependency** + suppression du
-   `package-lock.json` (le plugin n'a aucune dépendance runtime ; l'hôte fournit le SDK).
+4. **`peerDependency` vs `devDependency`** — on a d'abord **cru à tort** que `openclaw` en
+   devDependency tirait acpx via un `npm install` complet. **Hypothèse fausse** : acpx est
+   dans le `/app` d'OpenClaw (cf. #3), pas dans notre plugin ; ce changement n'a donc **pas**
+   débloqué acpx (c'est l'install manuelle de #3 qui l'a fait). Le passage devDependency →
+   **peerDependency** + suppression du `package-lock.json` reste néanmoins une **bonne pratique**
+   (le plugin n'a aucune dépendance runtime ; l'hôte fournit le SDK) et est conservé tel quel.
 
 5. **Manifeste : « requires configSchema »** — il faut un `configSchema`.
    → ajouté un schéma vide `{ "type":"object","additionalProperties":false,"properties":{} }`.
