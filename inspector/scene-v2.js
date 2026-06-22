@@ -80,6 +80,15 @@ export function createScene(container, callbacks = {}, islands = []) {
   };
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
+  // ===== rendu à la demande : ne redessine que sur changement =====
+  let needsRender = true;
+  let labelsDirty = true;
+  let lastLabelMs = 0;
+  let pendingPick = null;
+  controls.addEventListener("change", () => {
+    needsRender = true;
+  });
+
   // zoom manuel : pas fixe par cran
   renderer.domElement.addEventListener(
     "wheel",
@@ -94,6 +103,7 @@ export function createScene(container, callbacks = {}, islands = []) {
       );
       offset.setLength(dist);
       camera.position.copy(controls.target).add(offset);
+      needsRender = true;
     },
     { passive: false },
   );
@@ -697,6 +707,8 @@ export function createScene(container, callbacks = {}, islands = []) {
       total: files.length,
       isolated: isolated ? isolated.name : null,
     });
+    needsRender = true;
+    labelsDirty = true;
   }
 
   function setTheme(key) {
@@ -778,12 +790,14 @@ export function createScene(container, callbacks = {}, islands = []) {
     return -1;
   }
   const raycanvas = renderer.domElement;
-  raycanvas.addEventListener("pointermove", (e) => {
-    const i = pick(e.clientX, e.clientY);
+  function doPick(x, y) {
+    const i = pick(x, y);
     raycanvas.style.cursor = i >= 0 ? "pointer" : "grab";
     // en mode branche isolée : stats au survol d'un fichier
-    if (isolated)
-      callbacks.onContext?.(i >= 0 ? files[i] : null, e.clientX, e.clientY);
+    if (isolated) callbacks.onContext?.(i >= 0 ? files[i] : null, x, y);
+  }
+  raycanvas.addEventListener("pointermove", (e) => {
+    pendingPick = { x: e.clientX, y: e.clientY };
   });
   raycanvas.addEventListener("contextmenu", (e) => {
     const i = pick(e.clientX, e.clientY);
@@ -817,11 +831,13 @@ export function createScene(container, callbacks = {}, islands = []) {
 
   // les largeurs d'étiquettes dépendent des web fonts (chargement asynchrone) :
   // invalider les dimensions mesurées une fois la police prête → re-mesure unique
-  document.fonts?.ready?.then(() =>
+  document.fonts?.ready?.then(() => {
     labels.forEach((l) => {
       l.w = l.h = null;
-    }),
-  );
+    });
+    needsRender = true;
+    labelsDirty = true;
+  });
 
   function resize() {
     const w = container.clientWidth,
@@ -830,6 +846,8 @@ export function createScene(container, callbacks = {}, islands = []) {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     labelRenderer.setSize(w, h);
+    needsRender = true;
+    labelsDirty = true;
   }
   addEventListener("resize", resize);
   resize();
@@ -923,19 +941,38 @@ export function createScene(container, callbacks = {}, islands = []) {
     }
   }
 
+  function renderLabels() {
+    const t = performance.now();
+    if (labelsDirty || t - lastLabelMs >= 66) {
+      lastLabelMs = t;
+      labelsDirty = false;
+      declutterLabels();
+      labelRenderer.render(scene, camera);
+    } else {
+      needsRender = true; // re-arme pour flusher les étiquettes après l'arrêt du mouvement
+    }
+  }
+
   function animate() {
     requestAnimationFrame(animate);
+    if (pendingPick) {
+      const { x, y } = pendingPick;
+      pendingPick = null;
+      doPick(x, y);
+    }
     if (tween) {
       tween.t = Math.min(1, tween.t + 0.045);
       const e = 1 - Math.pow(1 - tween.t, 3);
       controls.target.lerpVectors(tween.fromT, tween.toT, e);
       camera.position.lerpVectors(tween.fromC, tween.toC, e);
       if (tween.t >= 1) tween = null;
+      needsRender = true;
     }
     controls.update();
-    declutterLabels();
+    if (!needsRender) return;
+    needsRender = false;
     renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
+    renderLabels();
   }
   animate();
 
