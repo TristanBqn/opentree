@@ -43,7 +43,6 @@ function glowTexture() {
 
 // révélation des étiquettes au zoom : fraction de fitDist par profondeur
 const REVEAL = { 1: 0.8, 2: 0.52, 3: 0.38 };
-const DENSITY_MUL = [, 0.8, 1.1, 1.5]; // indexé par opts.labelDepth (1..3)
 
 export function createScene(container, callbacks = {}, islands = []) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -196,7 +195,6 @@ export function createScene(container, callbacks = {}, islands = []) {
   const sizeScale = Math.max(1, fitDist / 44);
 
   const discTex = discTexture(),
-    pulseTex = discTexture(0.25),
     glowTex = glowTexture();
   const sceneRoot = new THREE.Group();
   scene.add(sceneRoot);
@@ -836,9 +834,6 @@ export function createScene(container, callbacks = {}, islands = []) {
   addEventListener("resize", resize);
   resize();
 
-  const clock = new THREE.Clock();
-  let lastT = 0;
-
   // ===== LABEL DECLUTTER : projection écran + masquage des chevauchements ===
   const _v = new THREE.Vector3();
   function declutterLabels() {
@@ -930,9 +925,6 @@ export function createScene(container, callbacks = {}, islands = []) {
 
   function animate() {
     requestAnimationFrame(animate);
-    const t = clock.getElapsedTime();
-    const dt = Math.min(0.05, t - lastT);
-    lastT = t;
     if (tween) {
       tween.t = Math.min(1, tween.t + 0.045);
       const e = 1 - Math.pow(1 - tween.t, 3);

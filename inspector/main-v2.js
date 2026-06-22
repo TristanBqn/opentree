@@ -3,7 +3,6 @@ import {
   formatSize,
   formatDate,
   relDate,
-  GIT_LABEL,
   isBinary,
   langOf,
   snippet,
@@ -15,7 +14,6 @@ const stage = $("#stage");
 
 let scene;
 const tooltip = $("#tooltip");
-const detail = $("#detail");
 
 // ---- usage helpers --------------------------------------------------------
 function usageLevel(uses) {
@@ -266,74 +264,12 @@ function applyLabelLevel() {
 labelSlider.addEventListener("input", applyLabelLevel);
 applyLabelLevel();
 
-// ---- detail panel ---------------------------------------------------------------
-function openDetail(file) {
-  detail.classList.add("show");
-  const branch = file.path.split("/");
-  const top = topNodeOf(file);
-  const color = top
-    ? scene.getLegend().find((l) => l.node === top)?.color || "#888"
-    : "#888";
-  const isl = scene.getIslands().find((i) => i.id === file.iid);
-  const lvl = usageLevel(file.uses);
-  const g = GIT_LABEL[file.git];
-  const lang = langOf(file.ext);
-  const crumb = branch
-    .slice(0, -1)
-    .map((p) => `<span>${p}</span>`)
-    .join("<i>/</i>");
-  const locRow =
-    isl && isl.kind === "container"
-      ? `<div class="m"><span class="k">Conteneur</span><span class="v"><span class="ip-dot st-${isl.status}"></span> ${isl.name.replace("openclaw-", "")}</span></div>`
-      : `<div class="m"><span class="k">Git</span><span class="v"><span class="git ${g.cls}">${g.txt}</span></span></div>`;
-  let body;
-  if (isBinary(file.ext)) {
-    body = `<div class="bin-card"><div class="bin-ext">.${file.ext}</div><div class="bin-meta">${lang} · ${formatSize(file.size)}</div><div class="bin-note">Ressource binaire — aucun aperçu texte</div></div>`;
-  } else {
-    const code = snippet(file) || "";
-    body = `<pre class="code"><code>${escapeHtml(code)}</code></pre>`;
-  }
-  const perDay = file.uses
-    ? (file.uses / 30).toFixed(1).replace(".", ",")
-    : "0";
-  detail.querySelector(".d-body").innerHTML = `
-    <div class="d-file"><span class="d-dot" style="background:${color}"></span><span class="d-name">${file.name}</span></div>
-    <div class="d-crumb">${crumb}</div>
-    <div class="d-usage">
-      <div class="du-head"><span class="k">Activité · 30 derniers jours</span><span class="u-tag ${lvl.cls}">${lvl.txt}</span></div>
-      ${sparkSVG(file.usage30, 320, 56)}
-      <div class="du-stats"><b>${file.uses}</b> utilisations · ${perDay} / jour · dernière ${relDate(file.mtime)}</div>
-    </div>
-    <div class="d-meta">
-      <div class="m"><span class="k">Type</span><span class="v">${lang}</span></div>
-      <div class="m"><span class="k">Taille</span><span class="v">${formatSize(file.size)}</span></div>
-      <div class="m"><span class="k">Créé</span><span class="v">${formatDate(file.createdAt)}</span></div>
-      <div class="m"><span class="k">Modifié</span><span class="v">${formatDate(file.mtime)}</span></div>
-      ${locRow}
-      <div class="m"><span class="k">Usage 30 j</span><span class="v">${file.uses}</span></div>
-    </div>
-    ${body}
-    <div class="d-actions">
-      <button class="d-btn" id="d-isolate">Isoler la branche</button>
-      <button class="d-btn ghost" id="d-center">Centrer</button>
-    </div>`;
-  detail
-    .querySelector("#d-isolate")
-    .addEventListener("click", () => isolateNode(file));
-  detail
-    .querySelector("#d-center")
-    .addEventListener("click", () =>
-      scene.flyTo({ pos: file.pos, depth: 3, type: "file", children: null }),
-    );
-}
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-$("#d-close").addEventListener("click", () => detail.classList.remove("show"));
 
 // ---- island info card -----------------------------------------------------
 const islandCard = $("#island-card");
-let activeIsland = null;
 const METRIC_RE = /^(CPU|RAM|disque|disk|mémoire)\b\s*(.*)$/i;
 function metricTile(chunk) {
   const m = chunk.match(METRIC_RE);
@@ -342,7 +278,6 @@ function metricTile(chunk) {
   return `<div class="ic-tile"><span class="t-v">${chunk}</span></div>`;
 }
 function openIsland(isl) {
-  activeIsland = isl;
   const leg = scene
     .getLegend()
     .find((l) => l.islandId === isl.id && l.node === isl.root);
@@ -399,7 +334,6 @@ function openIsland(isl) {
 }
 function closeIsland() {
   islandCard.classList.remove("show");
-  activeIsland = null;
   markActivePlate(null);
 }
 function markActivePlate(isl) {
@@ -533,7 +467,6 @@ addEventListener("keydown", (e) => {
     closeBubble();
     closeIsland();
     scene.resetView();
-    detail.classList.remove("show");
   }
   if (e.key === "/" && document.activeElement !== search) {
     e.preventDefault();

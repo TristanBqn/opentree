@@ -14,7 +14,7 @@ function mockApi() {
   };
 }
 
-test("registers one gateway-auth prefix route at /opentree", () => {
+test("registers one plugin-auth prefix route at /opentree", () => {
   const api = mockApi();
   registerOpenTree(api, {
     staticDir: ".",
@@ -25,7 +25,7 @@ test("registers one gateway-auth prefix route at /opentree", () => {
   });
   assert.equal(api.routes.length, 1);
   assert.equal(api.routes[0].path, "/opentree");
-  assert.equal(api.routes[0].auth, "gateway");
+  assert.equal(api.routes[0].auth, "plugin");
   assert.equal(api.routes[0].match, "prefix");
   assert.equal(typeof api.routes[0].handler, "function");
 });
