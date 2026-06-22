@@ -302,7 +302,7 @@ export function createScene(container, callbacks = {}, islands = []) {
       }
     }
 
-    walk(hostIsland.root, 0);
+    islands.filter((i) => i.kind === "host").forEach((h) => walk(h.root, 0));
 
     // arcs hôte → containers : lien réseau pointillé (statique) + parcours interne préfixé
     islands.forEach((isl) => {

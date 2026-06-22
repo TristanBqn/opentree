@@ -148,23 +148,27 @@ function renderLegend() {
       wrap.appendChild(b);
     });
 
-  const secH = document.createElement("div");
-  secH.className = "lg-sec";
-  secH.textContent = "Hôte · branches";
-  wrap.appendChild(secH);
-  legend
-    .filter((l) => l.islandId === "host")
-    .forEach((l) => {
-      const b = document.createElement("button");
-      b.className = "legend-chip";
-      b.innerHTML = `<span class="dot" style="background:${l.color}"></span><span class="lg-name">${l.name}</span><span class="lg-count">${l.uses}</span>`;
-      b.title = `${l.count} fichiers · ${l.uses} utilisations / 30 j`;
-      b.addEventListener("click", () => {
-        const cur = scene.isIsolated();
-        if (cur && cur.bid === l.node.bid) scene.resetView();
-        else scene.setIsolated(l.node);
-      });
-      wrap.appendChild(b);
+  islands
+    .filter((i) => i.kind === "host")
+    .forEach((host) => {
+      const secH = document.createElement("div");
+      secH.className = "lg-sec";
+      secH.textContent = host.name;
+      wrap.appendChild(secH);
+      legend
+        .filter((l) => l.islandId === host.id)
+        .forEach((l) => {
+          const b = document.createElement("button");
+          b.className = "legend-chip";
+          b.innerHTML = `<span class="dot" style="background:${l.color}"></span><span class="lg-name">${l.name}</span><span class="lg-count">${l.uses}</span>`;
+          b.title = `${l.count} fichiers · ${l.uses} utilisations / 30 j`;
+          b.addEventListener("click", () => {
+            const cur = scene.isIsolated();
+            if (cur && cur.bid === l.node.bid) scene.resetView();
+            else scene.setIsolated(l.node);
+          });
+          wrap.appendChild(b);
+        });
     });
 }
 renderLegend();

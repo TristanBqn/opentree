@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { annotate, placeOrigins } from "../lib/snapshot.mjs";
+import { annotate, placeOrigins, parseHosts } from "../lib/snapshot.mjs";
 
 const NOW = Date.UTC(2026, 5, 12, 12, 0, 0);
 
@@ -49,4 +49,24 @@ test("placeOrigins puts host at origin and spreads containers", () => {
   assert.deepEqual(o[0], [0, 0, 0]);
   assert.equal(o.length, 3);
   assert.notDeepEqual(o[1], o[2]);
+});
+
+test("parseHosts: single root", () => {
+  const h = parseHosts("/app", "openclaw");
+  assert.equal(h.length, 1);
+  assert.deepEqual(h[0], { root: "/app", name: "openclaw", rootLen: 10 });
+});
+
+test("parseHosts: two comma-separated roots", () => {
+  const h = parseHosts("/app,/home/node/.openclaw", "openclaw,.openclaw");
+  assert.equal(h.length, 2);
+  assert.equal(h[1].root, "/home/node/.openclaw");
+  assert.equal(h[1].name, ".openclaw");
+});
+
+test("parseHosts: trims spaces and derives missing name from basename", () => {
+  const h = parseHosts(" /app , /home/node/.openclaw ", "openclaw");
+  assert.equal(h.length, 2);
+  assert.equal(h[0].root, "/app");
+  assert.equal(h[1].name, ".openclaw");
 });

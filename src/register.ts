@@ -10,8 +10,7 @@ import { startWatcher } from "../lib/watcher.mjs";
 
 type Deps = {
   staticDir: string;
-  hostRoot: string;
-  hostName: string;
+  hosts: { root: string; name: string; rootLen?: number }[];
   stateDir: string;
   socketPath: string;
 };
@@ -22,8 +21,7 @@ export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
   const cache = createSnapshotCache({
     build: () =>
       buildSnapshot({
-        hostRoot: deps.hostRoot,
-        hostName: deps.hostName,
+        hosts: deps.hosts,
         dataDir: stateDir,
         socketPath: deps.socketPath,
         now: Date.now(),
@@ -49,8 +47,8 @@ export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
       stateDir = ctx.stateDir || deps.stateDir;
       const eventsPath = join(stateDir, "events.ndjson");
       watcher = startWatcher({
-        absRoot: deps.hostRoot,
-        rootName: deps.hostName,
+        absRoot: deps.hosts[0].root,
+        rootName: deps.hosts[0].name,
         eventsPath,
       });
     },

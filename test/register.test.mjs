@@ -18,8 +18,7 @@ test("registers one plugin-auth prefix route at /opentree", () => {
   const api = mockApi();
   registerOpenTree(api, {
     staticDir: ".",
-    hostRoot: "/tmp",
-    hostName: "~/openclaw",
+    hosts: [{ root: "/tmp", name: "~/openclaw" }],
     stateDir: "/tmp/state",
     socketPath: "/var/run/docker.sock",
   });
@@ -34,8 +33,7 @@ test("registers a watcher service with start and stop", () => {
   const api = mockApi();
   registerOpenTree(api, {
     staticDir: ".",
-    hostRoot: "/tmp",
-    hostName: "~/openclaw",
+    hosts: [{ root: "/tmp", name: "~/openclaw" }],
     stateDir: "/tmp/state",
     socketPath: "/var/run/docker.sock",
   });
