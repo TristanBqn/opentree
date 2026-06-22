@@ -817,6 +817,14 @@ export function createScene(container, callbacks = {}, islands = []) {
   applyColors();
   refresh();
 
+  // les largeurs d'étiquettes dépendent des web fonts (chargement asynchrone) :
+  // invalider les dimensions mesurées une fois la police prête → re-mesure unique
+  document.fonts?.ready?.then(() =>
+    labels.forEach((l) => {
+      l.w = l.h = null;
+    }),
+  );
+
   function resize() {
     const w = container.clientWidth,
       h = container.clientHeight;
@@ -874,8 +882,16 @@ export function createScene(container, callbacks = {}, islands = []) {
       }
       const sx = (_v.x * 0.5 + 0.5) * W;
       const sy = (-_v.y * 0.5 + 0.5) * H;
-      const w = l.el.offsetWidth || 70,
-        h = l.el.offsetHeight || 24;
+      if (l.w == null) {
+        const w0 = l.el.offsetWidth,
+          h0 = l.el.offsetHeight;
+        if (w0) {
+          l.w = w0;
+          l.h = h0;
+        }
+      }
+      const w = l.w || 70,
+        h = l.h || 24;
       // priorité : profondeur faible, puis proche, puis usage élevé
       const score = l.node.depth * 1000 + dist - (l.node.uses || 0) * 0.01;
       cand.push({ l, sx, sy, w, h, dist, score });

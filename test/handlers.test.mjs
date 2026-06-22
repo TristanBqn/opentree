@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import zlib from "node:zlib";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,35 @@ async function withServer(handler, fn) {
   } finally {
     server.close();
   }
+}
+
+// raw GET: fetch/undici auto-decompresses, so inspect headers + body directly
+function rawGet(base, path, headers) {
+  const u = new URL(base + path);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname,
+        method: "GET",
+        headers,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode,
+            headers: res.headers,
+            body: Buffer.concat(chunks),
+          }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 test("serves /api/snapshot from the cache under a prefix", async () => {
@@ -50,6 +80,44 @@ test("/api/refresh forces a rebuild", async () => {
     await fetch(`${base}/opentree/api/snapshot`);
     const r = await fetch(`${base}/opentree/api/refresh`, { method: "POST" });
     assert.equal((await r.json()).generatedAt, 2);
+  });
+});
+
+test("gzip-encodes /api/snapshot when the client accepts gzip", async () => {
+  const cache = createSnapshotCache({
+    build: async () => ({ generatedAt: 9, islands: [] }),
+  });
+  const handler = createRequestHandler({
+    staticDir: ".",
+    cache,
+    prefix: "/opentree",
+  });
+  await withServer(handler, async (base) => {
+    const r = await rawGet(base, "/opentree/api/snapshot", {
+      "accept-encoding": "gzip",
+    });
+    assert.equal(r.headers["content-encoding"], "gzip");
+    assert.match(r.headers["vary"] || "", /Accept-Encoding/i);
+    const json = JSON.parse(zlib.gunzipSync(r.body).toString());
+    assert.equal(json.generatedAt, 9);
+  });
+});
+
+test("sends plain JSON when the client does not accept gzip", async () => {
+  const cache = createSnapshotCache({
+    build: async () => ({ generatedAt: 11, islands: [] }),
+  });
+  const handler = createRequestHandler({
+    staticDir: ".",
+    cache,
+    prefix: "/opentree",
+  });
+  await withServer(handler, async (base) => {
+    const r = await rawGet(base, "/opentree/api/snapshot", {
+      "accept-encoding": "identity",
+    });
+    assert.equal(r.headers["content-encoding"], undefined);
+    assert.equal(JSON.parse(r.body.toString()).generatedAt, 11);
   });
 });
 

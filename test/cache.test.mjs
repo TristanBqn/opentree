@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import zlib from "node:zlib";
 import { createSnapshotCache } from "../lib/cache.mjs";
 
 test("get() builds lazily once, then serves the cached value", async () => {
@@ -52,4 +53,18 @@ test("a failed build does not poison the cache", async () => {
   await assert.rejects(() => cache.get(), /boom/);
   const ok = await cache.get();
   assert.equal(ok.generatedAt, 2);
+});
+
+test("rebuild caches a serialized json string and a gzip buffer", async () => {
+  const cache = createSnapshotCache({
+    build: async () => ({ generatedAt: 7, islands: [] }),
+  });
+  const entry = await cache.get();
+  assert.equal(typeof entry.json, "string");
+  assert.equal(JSON.parse(entry.json).generatedAt, 7);
+  assert.ok(Buffer.isBuffer(entry.gzip));
+  assert.deepEqual(JSON.parse(zlib.gunzipSync(entry.gzip).toString()), {
+    generatedAt: 7,
+    islands: [],
+  });
 });
