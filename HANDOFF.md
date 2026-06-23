@@ -1,4 +1,4 @@
-# OpenTree — Handoff (2026-06-23)
+# OpenTree — Handoff (2026-06-24)
 
 État de reprise du déploiement d'OpenTree en plugin OpenClaw sur le VPS Hetzner.
 
@@ -12,202 +12,249 @@ et les conteneurs Docker.
 ## État actuel — CE QUI MARCHE ✅
 
 - Le plugin **est déployé, chargé et rendu** dans le navigateur.
-  Log gateway : `http server listening (7 plugins: …, opentree, …)`.
+  Log gateway : `http server listening (… plugins: …, opentree, …)`.
 - Accès **via tunnel SSH** : `ssh -L 18789:127.0.0.1:18789 openclaw@<VPS>` puis
   `http://localhost:18789/opentree/` → le viewer 3D s'affiche.
-- Le backend renvoie de **vraies données VPS** : host `openclaw`, `4 vCPU · 7,6 Gi`,
-  `disque 36G / 150G`.
-- **Le scan pointe sur `/app` ET `/home/node/.openclaw`** via la variable
-  `OPENTREE_HOST_ROOT` (voir §1b). Les deux îles apparaissent dans le viewer comme
-  « openclaw » et « .openclaw ». Conteneurs Docker présents avec CPU/RAM/ports.
-- **Réponses gzip** : le backend sérialise le snapshot une seule fois, compresse en
-  gzip à la construction du cache ; les clients qui envoient `Accept-Encoding: gzip`
-  reçoivent la version compressée (gain ≈ 4-5× sur la taille du JSON).
-- **Rendu à la demande** : quand la scène est immobile, aucun rendu WebGL ni passage
-  étiquettes CSS2D ne s'exécute (0 % GPU au repos). Raycast throttlé à 1/frame.
-  Passage étiquettes limité à ~15 fps même pendant l'orbite.
+- Le backend renvoie de **vraies données VPS** : host `openclaw`, vCPU/RAM, disque.
+- **Double scan hôte** : `/app` ET `/home/node/.openclaw` via `OPENTREE_HOST_ROOT`
+  (voir §config VPS). Deux îles « openclaw » et « .openclaw ». Conteneurs Docker
+  listés avec CPU/RAM/ports.
+- **Réponses gzip** : snapshot pré-sérialisé + pré-compressé à la construction du cache.
+- **Rendu à la demande** : 0 % GPU au repos. Raycast throttlé à 1/frame.
+- **Étiquettes virtualisées** : seules les étiquettes à l'écran sont montées dans le
+  graphe (coût `CSS2DRenderer.zOrder` ramené de O(tous dossiers) à O(à l'écran)).
 - Le dépôt **github.com/TristanBqn/opentree** est la source de vérité (public).
-- Le dépôt `neuronal_skills` a été **remis dans son état d'origine** (le push initial
-  par erreur a été annulé : PR fermée + branche distante supprimée, `main` intact).
+
+## NOUVEAU — session 2026-06-24
+
+Branche `feat/label-level-bar`, **poussée sur `main`** (remote GitHub = `ee555e5`,
+vérifié `git ls-remote`). 48 tests verts (`npm test`).
+
+> ⚠️ **Déploiement VPS** : confirmé jusqu'à `d67d5b3` (fix étiquettes). Les deux
+> commits **backend** `bfb1f78` + `ee555e5` sont poussés mais **leur redéploiement
+> VPS n'est pas confirmé** → refaire `git pull` + `cp lib/` + `docker restart`
+> (procédure §mise à jour). C'est du backend : `lib/` DOIT être recopié.
+
+| Commit    | Contenu                                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `e0cedc3` | **Barre de niveau d'étiquettes** (bas-centre) + transparence isolé `0.15→0.075` + rebase taille fichiers (100 % = ancien 40 %). |
+| `d67d5b3` | **Fix** : étiquettes de la 2ᵉ île hôte (`.openclaw`) ne s'affichaient jamais.                                                   |
+| `bfb1f78` | **Fix backend** : le watcher surveille toutes les racines hôte, pas seulement la 1ʳᵉ.                                           |
+| `ee555e5` | **Fix backend** : garde anti-boucle (le watcher ignore son propre `events.ndjson`).                                             |
+
+### Détails
+
+**Barre de niveau d'étiquettes** (`OpenTree.html`, `main-v2.js`, `scene-v2.js`)
+
+- Slider + case **Auto** dans une barre centrée en bas ; ligne retirée des Réglages.
+- **Niveau 0 = aucune étiquette.** Niveau N = uniquement les dossiers de
+  **profondeur N** (exact, **non cumulatif**), filtrés par ce qui est à l'écran +
+  anti-chevauchement.
+- **Auto** : niveau déduit du zoom (`levelFromZoom`), le slider est piloté/désactivé
+  et **bouge tout seul** (dézoomé complet → 0 → rien ; on zoome → 1, 2, 3…).
+- Remplace l'ancien « gate overview » + seuils `REVEAL` (supprimés).
+- ⚠️ Piège corrigé : `createScene` lance un 1er `animate()` **synchrone** → le
+  callback `onLabelLevel` se déclenche avant le câblage du slider. Les éléments de la
+  barre + `setLevelLabel` sont donc déclarés **avant** `createScene` dans `main-v2.js`.
+
+**Fix 2ᵉ île hôte** (`scene-v2.js`)
+
+- Cause : `const isCont = d.iid !== "host"`. Or `snapshot.mjs:128` ne donne l'id
+  `"host"` qu'à la **1ʳᵉ** île ; les suivantes prennent leur nom (`.openclaw`). Leurs
+  nœuds étaient pris pour des conteneurs → classe `hidden` → jamais d'étiquette.
+- Corrigé : détection par `kind` de l'île (`containerIids` = îles `kind:"container"`).
+- ⚠️ **`inspector/scene.js` (viewer v1) a le même bug** (`iid !== "host"`) — non
+  utilisé par le produit (`OpenTree.html`→`main-v2`→`scene-v2`), donc laissé tel quel.
+
+**Fix watcher multi-racines + anti-boucle** (`lib/watcher.mjs`, `src/register.ts`)
+
+- `register.ts` ne passait que `hosts[0]` à `startWatcher` → `.openclaw` n'avait
+  jamais d'événements réels (toujours le proxy mtime). `startWatcher` accepte
+  désormais une liste `roots`, surveille chacune, avec **un seul** propriétaire de la
+  rotation (le `.tmp` est partagé → des timers par racine se marcheraient dessus).
+- `events.ndjson` vit dans le `stateDir`, **sous** `/home/node/.openclaw` (racine
+  surveillée) → sans garde, chaque écriture d'événement en redéclencherait une
+  (emballement). `isIgnoredPath()` ignore le journal et son `.tmp`.
 
 ## CE QU'IL RESTE À FAIRE
 
-### 1a. Pointer le scan sur `/app` + voir les conteneurs Docker — ✅ FAIT (2026-06-22)
+### A. Contenu réel au clic droit (#4) — DESIGN PRÊT, NON IMPLÉMENTÉ
 
-Réalisé en éditant `docker-compose.override.yml` du gateway (chemin réel :
-`/home/openclaw/openclaw/docker-compose.override.yml`). Le service s'appelle
-`openclaw-gateway`. Bloc ajouté sous le service (indentation alignée sur `build:`) :
+Aujourd'hui `inspector/content.js:snippet()` **fabrique** un faux contenu d'après
+l'extension — aucun fichier n'est lu. Plan validé (reste à coder + redéployer) :
 
-```yaml
-environment:
-  OPENTREE_HOST_ROOT: /app
-  OPENTREE_HOST_NAME: openclaw
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
-```
+- **Backend** (`lib/handlers.mjs`, `src/register.ts`, + test) : route
+  `GET /opentree/api/file?path=<chemin d'affichage>`. Mapping : 1er segment = `host.name`
+  → `host.root` absolu → `resolve(root, reste)`, avec **garde anti-traversée** (même
+  logique que le statique). Lecture des **64 premiers Ko** UTF-8, réponse
+  `{ path, content, truncated }`.
+- **Frontend** (`data.js`, `main-v2.js`, `content.js`) : `fetchFileContent(path)`,
+  `openFileBubble` async (« chargement… » → vrai texte), **suppression** de `snippet()`.
+- **Décision en attente** : `.md` affiché en **texte brut** (reco, évite parseur +
+  XSS) ou **rendu** markdown. Reporté à la demande de l'utilisateur (« pas pour l'instant »).
 
-`environment` (style map) **fusionne** avec celui du base ; `volumes` (liste) se
-**concatène**. Vérif du merge avant d'appliquer : `docker compose config | grep -iE 'OPENTREE|docker.sock'`.
-Appliqué par `docker compose up -d openclaw-gateway`. Persiste aux redémarrages.
+### B. Tracking des LECTURES — ANALYSÉ, NON IMPLÉMENTÉ, DÉCISION EN ATTENTE
 
-> ⚠️ Cette config vit **sur le VPS uniquement** (override compose), pas dans le dépôt.
+Rien ne capte les lectures aujourd'hui (`fs.watch` ne voit que les écritures/renames).
+C'est de l'**infra non triviale**, pas une petite édition. Options :
 
-> Limite acceptée : sans binaire `docker` dans le conteneur, l'arbre INTERNE de
-> chaque conteneur est vide (`lib/docker.mjs:execFind` appelle `docker exec` en CLI →
-> échoue silencieusement). Les conteneurs apparaissent quand même avec stats/ports
-> (listés via l'API HTTP du socket : `listContainers`/`dockerGet`). Pour les arbres
-> internes, réécrire `execFind` sur l'API exec du socket (POST `/containers/{id}/exec`).
+- **atime** : à écarter (Linux `relatime`/`noatime` → quasi pas mis à jour ; pas de comptage).
+- **inotify `IN_ACCESS`** : non exposé par `fs.watch` (outil externe), très bruyant.
+- **auditd** (`-F dir=… -S openat`, le `-w` simple n'est pas récursif) : lectures
+  réelles **avec PID/utilisateur**, mais **root** + **gros volume de logs** + un
+  collecteur qui parse `/var/log/audit/audit.log` → `events.ndjson`.
+- **eBPF / bpftrace** : plus léger (agrégation noyau), mais root + démon long-running.
+- **Instrumentation applicative** : la plus propre, MAIS il faudrait modifier l'agent
+  OpenClaw (produit hôte, pas notre plugin) → probablement hors de portée.
 
-### 1b. Scanner plusieurs racines hôte (`/app` + `.openclaw`) — ✅ FAIT (2026-06-23)
+Côté OpenTree, le stockage serait simple : généraliser `events.ndjson` à
+`{ts, path, op:"read"|"write"}` + agrégat `reads30`/`reads` à côté de `usage30`.
+**La partie coûteuse, c'est la SOURCE.**
 
-`lib/snapshot.mjs` : `parseHosts(rootStr, nameStr)` parse des listes comma-separated.
-`lib/cache.mjs` : pré-sérialise + pré-compresse (gzip) le snapshot à la construction.
-`lib/handlers.mjs` : content negotiation `Accept-Encoding: gzip` + `Vary`.
-`inspector/scene-v2.js` : section légende par île hôte.
+**Questions ouvertes avant de coder** : (1) lectures réelles attribuées (qui/combien)
+ou simple signal « consulté » ? (2) OK pour faire tourner un collecteur **root** en
+continu ? Si oui/oui → reco **eBPF (bpftrace)** filtré sur les racines hôte. Si non →
+le tracking de lectures n'est pas réalisable proprement.
 
-Pour activer le double scan sur le VPS, mettre à jour `docker-compose.override.yml` :
+### C. URL permanente + auth — PROCHAINE ÉTAPE PRODUIT
 
-```yaml
-environment:
-  OPENTREE_HOST_ROOT: /app,/home/node/.openclaw
-  OPENTREE_HOST_NAME: openclaw,.openclaw
-```
+- Tailscale **n'est pas installé** : `sudo snap install tailscale` → `sudo tailscale up`
+  → `tailscale serve --bg 18789` → `https://<machine>.<tailnet>.ts.net/opentree/`.
+- Route en `auth: "plugin"` (`src/register.ts`) → **non protégée par mot de passe** ;
+  protection = réseau (tunnel SSH ou tailnet). Pour un vrai mot de passe navigateur,
+  ajouter un **HTTP Basic Auth** dans `lib/handlers.mjs` (non fait).
 
-Puis `docker compose up -d openclaw-gateway`.
+### D. Backports / nettoyage
 
-### 1c. Rendu à la demande — ✅ FAIT (2026-06-23)
-
-`inspector/scene-v2.js` uniquement. Trois optimisations :
-
-- **Rendu à la demande** : `needsRender` flag ; `controls.addEventListener("change")`
-  déclenche un rendu. Immobile = 0 appel GPU.
-- **Raycast throttlé** : `pendingPick` stocke la position souris, un seul `pick()` par frame.
-- **Étiquettes CSS2D throttlées à ~15 fps** : `declutterLabels()` + `labelRenderer.render()`
-  max toutes les 66 ms (le `zOrder()` du renderer est O(n) sur tous les labels — réduire
-  la fréquence est le seul levier sans changer le nombre d'objets dans la scène).
-
-Vérifié avec Playwright (Chromium headless) : 0 erreur console, drag fonctionne, zoom
-fonctionne, deux sections légende visibles.
-
-### 2. URL permanente + auth (plus tard) — PROCHAINE ÉTAPE
-
-- Tailscale **n'est pas installé** sur le VPS. Pour l'URL permanente :
-  `sudo snap install tailscale` → `sudo tailscale up` → `tailscale serve --bg 18789`
-  → `https://<machine>.<tailnet>.ts.net/opentree/`.
-- Auth navigateur : la route est en `auth: "plugin"` (voir plus bas), donc **non
-  protégée par mot de passe** — la protection vient du réseau (tunnel SSH ou tailnet).
-  Pour un vrai mot de passe navigateur, ajouter un **HTTP Basic Auth** dans
-  `lib/handlers.mjs` (non fait).
-
-### 3. Backports / nettoyage
-
-- Le dépôt est correct, mais l'install manuelle copie **seulement l'essentiel**
-  (manifeste + package.json + dist + lib + inspector). Pas de mécanisme auto.
+- L'install manuelle copie l'essentiel (manifeste + package.json + dist + lib +
+  inspector). Pas de mécanisme auto.
 - Faire `hostRoot`/`hostName` des **options de config du plugin** (configSchema +
-  lecture de `api.pluginConfig`) serait plus propre que l'env (permettrait
-  `openclaw config set plugins.entries.opentree.config.hostRoot …` sans redéployer).
+  `api.pluginConfig`) plutôt que des variables d'env.
+- Arbres **internes** des conteneurs vides (`lib/docker.mjs:execFind` appelle
+  `docker exec` en CLI, absent du conteneur). Réécrire sur l'API exec du socket
+  (POST `/containers/{id}/exec`) pour les remplir.
 
-## HISTORIQUE DES BLOCAGES ET RÉSOLUTIONS (ce qui n'a pas marché et pourquoi)
+## LIMITES / CAVEATS IMPORTANTS (tracking d'usage)
 
-1. **`openclaw plugins install git:…` refusé** — le manifeste était dans le sous-dossier
-   `opentree-agent/`, pas à la racine ; et l'install git scanne le code.
-   → **Restructuration** : le plugin est devenu la racine du dépôt, `dist/` committé.
+- **Le « heat » est majoritairement un PROXY mtime, pas un historique.** Si un fichier
+  n'a pas d'événement réel, `usage30 = mtimeToUsage30(mtime)` (`usage.mjs:8`) pose
+  **un seul `1`** au jour de dernière modif → `uses` vaut **0 ou 1**, le sparkline est
+  un pic unique. Le libellé tooltip « X utilisations · 30 j » est donc **trompeur**
+  pour ces fichiers (= « modifié récemment : oui/non »).
+- **Événements réels** (`events.ndjson` via watcher) : vrai comptage par jour, **mais**
+  seulement pour les modifs survenues **pendant que la gateway tourne** (les trous de
+  downtime ne sont pas rattrapés — accepté), et **à partir du déploiement** du fix
+  multi-racines pour `.openclaw`.
+- **Dépend de `fs.watch({recursive:true})`**, ajouté à **Node ≥ 20**. Sur version
+  antérieure → fallback mtime, **aucun** événement (`watcher.mjs` log un warn).
+  **À vérifier sur le VPS** : `docker exec openclaw-openclaw-gateway-1 node -v`.
+- Limite **inotify** (`fs.inotify.max_user_watches`) possible sur 34k fichiers.
+- Agrégation : `annotate` somme `uses`/`usage30` vers le haut → le `uses` d'un dossier
+  ≈ nombre de fichiers descendants modifiés sur 30 j (semi-significatif même en proxy).
 
-2. **Scan « dangerous code patterns: child_process »** (sur la 1ère install git, bannière
-   2026.6.1) — bloquait les plugins utilisant `child_process` (`lib/snapshot.mjs` df,
-   `lib/docker.mjs` exec). → **Non-problème sur ta version** : ce scan a été **retiré**
-   dans OpenClaw 2026.6.8 (message explicite : `--dangerously-force-unsafe-install` est
-   devenu no-op « because built-in install-time dangerous-code scanning has been removed »).
-   Le code n'a pas eu à changer. (NB : on n'a jamais pu vérifier qu'une install locale
-   contournait ce motif — elle échouait sur acpx avant, cf. #3.)
+**Vérifier que le tracking marche vraiment** (sur le VPS, prompt `openclaw@…`) :
 
-3. **`acpx` : « code safety scan failed »** — BLOQUE TOUTE install de plugin.
-   Cause = symlink fantôme **dans l'install OpenClaw elle-même** :
-   `/app/node_modules/.bin/acpx -> ../acpx/dist/cli.js` alors que le paquet `acpx`
-   est **absent**. Défaut de l'image `openclaw:local` (2026.6.8). Pas notre plugin.
-   → Contourné par **install manuelle** : copie dans le dossier d'extensions global
-   `~/.openclaw/extensions/opentree/` (chargé au démarrage du gateway, sans le scan d'install).
+```bash
+docker exec openclaw-openclaw-gateway-1 sh -c 'find /home/node/.openclaw -name events.ndjson 2>/dev/null'
+# puis, avec le chemin : wc -l <chemin> ; tail -3 <chemin>
+# modifier un fichier dans .openclaw, attendre, refaire wc -l → le compteur doit monter
+```
 
-4. **`peerDependency` vs `devDependency`** — on a d'abord **cru à tort** que `openclaw` en
-   devDependency tirait acpx via un `npm install` complet. **Hypothèse fausse** : acpx est
-   dans le `/app` d'OpenClaw (cf. #3), pas dans notre plugin ; ce changement n'a donc **pas**
-   débloqué acpx (c'est l'install manuelle de #3 qui l'a fait). Le passage devDependency →
-   **peerDependency** + suppression du `package-lock.json` reste néanmoins une **bonne pratique**
-   (le plugin n'a aucune dépendance runtime ; l'hôte fournit le SDK) et est conservé tel quel.
+## HISTORIQUE DES BLOCAGES ET RÉSOLUTIONS
 
-5. **Manifeste : « requires configSchema »** — il faut un `configSchema`.
-   → ajouté un schéma vide `{ "type":"object","additionalProperties":false,"properties":{} }`.
-
-6. **« failed to parse manifest: JSON5 invalid '\n' at 2:0 »** — on avait copié **tout
-   le dépôt** dans le dossier d'extension ; un `.json` parasite (probablement `tsconfig.json`)
-   cassait le scanner de manifestes. → copier **seulement l'essentiel**.
-
-7. **« blocked by allowlist »** — il y a une liste blanche `plugins.allow`.
-   → `openclaw config set plugins.allow.7 opentree` + `openclaw config set plugins.entries.opentree.enabled true`.
-
-8. **`/opentree/` → `{"error":"Unauthorized"}` au navigateur** — `auth: "gateway"` exige
-   un en-tête `Authorization: Bearer <token>` que le navigateur n'envoie pas (la Control UI
-   s'authentifie en WebSocket, pas en cookie HTTP). → passé en **`auth: "plugin"`** (comme
-   le plugin Canvas qui sert aussi une UI web) ; protection assurée par le réseau.
-
-9. **Viewer bloqué sur « lecture de l'architecture »** — THREE.js était chargé depuis le
-   **CDN jsdelivr**, injoignable depuis le navigateur (réseau/CSP). → **THREE.js vendored
-   en local** dans `inspector/vendor/` + importmap pointée dessus. Le plugin est
-   maintenant auto-suffisant (aucune dépendance CDN).
+1. **`openclaw plugins install git:…` refusé** — manifeste dans un sous-dossier + scan
+   du code. → **Restructuration** : le plugin est la racine du dépôt, `dist/` committé.
+2. **Scan « dangerous code patterns: child_process »** — **retiré** dans OpenClaw
+   2026.6.8 (`--dangerously-force-unsafe-install` devenu no-op). Le code n'a pas changé.
+3. **`acpx` : « code safety scan failed »** — symlink fantôme **dans l'install OpenClaw**
+   (`/app/node_modules/.bin/acpx` → paquet absent). Défaut de l'image `openclaw:local`.
+   → Contourné par **install manuelle** dans `~/.openclaw/extensions/opentree/`.
+4. **`peerDependency` vs `devDependency`** — hypothèse acpx fausse ; le passage en
+   peerDependency + suppression du lockfile reste une bonne pratique, conservé.
+5. **Manifeste : « requires configSchema »** → schéma vide ajouté.
+6. **« JSON5 invalid '\n' »** — on copiait tout le dépôt ; un `.json` parasite cassait le
+   scanner de manifestes. → copier **seulement l'essentiel**.
+7. **« blocked by allowlist »** → `openclaw config set plugins.allow.N opentree` +
+   `plugins.entries.opentree.enabled true`.
+8. **`/opentree/` → `Unauthorized`** — `auth:"gateway"` exige un Bearer que le navigateur
+   n'envoie pas. → passé en **`auth:"plugin"`** (comme le plugin Canvas).
+9. **Viewer bloqué sur « lecture de l'architecture »** — THREE.js chargé du CDN,
+   injoignable. → **THREE.js vendored** dans `inspector/vendor/` + importmap locale.
+10. **(2026-06-24) Étiquettes 2ᵉ île jamais affichées** — `iid !== "host"` ; cf. fix
+    `d67d5b3` ci-dessus. Reproduit avec un snapshot à 2 hôtes avant correction.
+11. **(2026-06-24) Déploiement : `rm`/`cp` dans le mauvais ordre** — `cp` PUIS `rm` a
+    effacé `inspector/dist/lib` du dossier d'extension juste après les avoir copiés.
+    → un `cp` par-dessus suffit (pas besoin du `rm` si rien de stale).
 
 ## RÉFÉRENCES
 
 ### Dépôt
 
 - `github.com/TristanBqn/opentree` (public). Clone de dev : `~/opentree` (Mac).
-- Le plugin EST la racine du dépôt : `openclaw.plugin.json`, `package.json`, `dist/`,
-  `lib/`, `inspector/` (avec `inspector/vendor/` = THREE bundlé), `src/`.
-- Auth de la route : `src/register.ts` → `auth: "plugin"`.
+- Le plugin EST la racine : `openclaw.plugin.json`, `package.json`, `dist/`, `lib/`,
+  `inspector/` (avec `inspector/vendor/` = THREE bundlé), `src/`.
+- Branche de travail courante : `feat/label-level-bar` (poussée sur `main`).
+- Tests : `npm test` (build TS + `node --test`), **48 tests**. Ils couvrent `lib/`
+  (cache, gzip, handlers, traversée, snapshot, usage, docker, walk, **watcher
+  multi-racines + isIgnoredPath**, rotate). **Le viewer (`inspector/`) n'a PAS de
+  harnais de test.**
+- **Vérif frontend** : piloter le Chromium de Playwright en direct (le canal `chrome`
+  du MCP n'est pas installé) :
+  `~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/...`
+  via `playwright-core` (cache npx). Servir en statique + un faux `inspector/api/snapshot`.
+
+### Config VPS (override compose, vit **sur le VPS uniquement**)
+
+`/home/openclaw/openclaw/docker-compose.override.yml`, service `openclaw-gateway` :
+
+```yaml
+environment:
+  OPENTREE_HOST_ROOT: /app,/home/node/.openclaw
+  OPENTREE_HOST_NAME: openclaw,.openclaw
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+Vérif merge : `docker compose config | grep -iE 'OPENTREE|docker.sock'`.
+Appliqué par `docker compose up -d openclaw-gateway`.
 
 ### Environnement VPS
 
 - OpenClaw **2026.6.8**, image `openclaw:local`, user `openclaw`.
 - Conteneur gateway : `openclaw-openclaw-gateway-1`.
-- `~/.openclaw` (hôte `/home/openclaw/.openclaw`) **monté** dans le conteneur sur
-  `/home/node/.openclaw` (RW).
+- `~/.openclaw` (hôte) **monté** dans le conteneur sur `/home/node/.openclaw` (RW).
 - Gateway HTTP : `127.0.0.1:18789` (publié sur l'hôte en loopback).
-- Plugin installé manuellement : `~/.openclaw/extensions/opentree/`
-  (contenu : `openclaw.plugin.json`, `package.json`, `dist/`, `lib/`, `inspector/`).
+- Plugin installé : `~/.openclaw/extensions/opentree/`
+  (`openclaw.plugin.json`, `package.json`, `dist/`, `lib/`, `inspector/`).
 
-### Procédure de mise à jour du plugin (après modif du dépôt)
+### Procédure de mise à jour du plugin
 
 ```bash
-# Mac : pousser
-git -C ~/opentree push origin HEAD:main
-# VPS : tirer + recopier l'essentiel + redémarrer
+# === Mac : pousser ===
+git -C ~/opentree push origin feat/label-level-bar:main
+
+# === VPS (prompt openclaw@…) : tirer + recopier + redémarrer ===
 cd ~/opentree && git pull
-rm -rf ~/.openclaw/extensions/opentree/inspector ~/.openclaw/extensions/opentree/dist ~/.openclaw/extensions/opentree/lib
 cp -r ~/opentree/inspector ~/opentree/dist ~/opentree/lib ~/.openclaw/extensions/opentree/
 docker restart openclaw-openclaw-gateway-1
 ```
 
-### Commandes utiles
+> Backend modifié (lib/) → `lib/` DOIT être recopié. `cp` par-dessus suffit.
 
 ```bash
-# accès navigateur (laptop) : tunnel SSH puis http://localhost:18789/opentree/
+# === Mac : tunnel pour le navigateur (laisser ouvert) ===
 ssh -L 18789:127.0.0.1:18789 openclaw@<VPS>
-
-# tester la route depuis le VPS (auth:plugin → pas de token requis)
-docker exec openclaw-openclaw-gateway-1 node -e "fetch('http://127.0.0.1:18789/opentree/api/snapshot').then(r=>r.text()).then(t=>console.log(t.slice(0,200)))"
-
-# logs gateway
-docker logs --tail 60 openclaw-openclaw-gateway-1 2>&1 | grep -iE "opentree|plugin|error"
-
-# état des plugins / config
-openclaw config get plugins.allow
+# puis http://localhost:18789/opentree/
 ```
 
 ### Pièges connus
 
-- Le **terminal du VPS corrompt les pastes longues** (insère des retours à la ligne
-  ~80 colonnes). Préférer des commandes courtes, ou passer par `git pull` + `cp` plutôt
-  que de coller du JSON/scripts longs.
-- `openclaw config get gateway.auth.token` renvoie `__OPENCLAW_REDACTED__` (masqué) ;
-  lire la valeur réelle dans `~/.openclaw/openclaw.json` si besoin.
-- `plugin-network` (autre plugin git déjà présent) est cassé (`Cannot find module 'typebox'`)
-  et fait planter certaines commandes CLI — indépendant d'OpenTree.
+- **Mac vs VPS** : prompt `tristanbannier@MacBook-Air…%` = Mac (`git push`, `ssh`,
+  navigateur) ; `openclaw@openclaw-tristanb…$` = VPS (`git pull`, `cp`, `docker`,
+  `curl` de test). Ne pas lancer les commandes VPS sur le Mac (et inversement).
+- Le **terminal du VPS corrompt les pastes longues** (~80 colonnes). Commandes
+  **courtes** ; `git pull` + `cp` plutôt que coller du JSON/scripts longs.
+- `openclaw config get gateway.auth.token` renvoie `__OPENCLAW_REDACTED__` ; lire la
+  vraie valeur dans `~/.openclaw/openclaw.json` si besoin.
+- `plugin-network` (autre plugin git) est cassé (`Cannot find module 'typebox'`) et
+  fait planter certaines commandes CLI — indépendant d'OpenTree.
