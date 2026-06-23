@@ -4,7 +4,11 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { formatEventLine, startWatcher } from "../lib/watcher.mjs";
+import {
+  formatEventLine,
+  isIgnoredPath,
+  startWatcher,
+} from "../lib/watcher.mjs";
 import { parseEventsNdjson } from "../lib/usage.mjs";
 
 const NOW = Date.UTC(2026, 5, 12, 12, 0, 0);
@@ -14,6 +18,25 @@ test("formatEventLine emits a line parseEventsNdjson can read", () => {
   assert.ok(line.endsWith("\n"));
   const map = parseEventsNdjson(line, NOW);
   assert.equal(map.get("~/openclaw/src/server.ts")[29], 1);
+});
+
+test("isIgnoredPath ignores its own events file even when under a watched root", () => {
+  const root = "/home/node/.openclaw";
+  const events = "/home/node/.openclaw/state/opentree/events.ndjson";
+  // real files are tracked
+  assert.equal(isIgnoredPath("src/server.ts", root, events), false);
+  // noise is ignored
+  assert.equal(isIgnoredPath("node_modules/x/index.js", root, events), true);
+  assert.equal(isIgnoredPath(".git/HEAD", root, events), true);
+  // the events file and its rotation tmp must NOT feed back into themselves
+  assert.equal(
+    isIgnoredPath("state/opentree/events.ndjson", root, events),
+    true,
+  );
+  assert.equal(
+    isIgnoredPath("state/opentree/events.ndjson.tmp", root, events),
+    true,
+  );
 });
 
 async function waitFor(predicate, timeoutMs = 4000, stepMs = 50) {
