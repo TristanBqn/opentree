@@ -15,6 +15,17 @@ const stage = $("#stage");
 let scene;
 const tooltip = $("#tooltip");
 
+// barre d'étiquettes (bas-centre) : déclarée avant createScene car le premier
+// rendu synchrone peut appeler onLabelLevel → setLevelLabel
+const lvlSlider = $("#lvl-slider");
+const lvlVal = $("#lvl-val");
+const lvlAuto = $("#lvl-auto");
+const lvlText = (v) => (v <= 0 ? "Aucune" : "Niveau " + v);
+function setLevelLabel(v) {
+  lvlSlider.value = String(v);
+  lvlVal.textContent = lvlText(v);
+}
+
 // ---- usage helpers --------------------------------------------------------
 function usageLevel(uses) {
   if (uses <= 0) return { txt: "inactif", cls: "u0" };
@@ -89,6 +100,9 @@ const callbacks = {
       chip.classList.add("show");
       $("#isolate-name").textContent = isolated;
     } else chip.classList.remove("show");
+  },
+  onLabelLevel(level) {
+    setLevelLabel(level);
   },
 };
 
@@ -245,28 +259,23 @@ $("#opt-plates").addEventListener("change", (e) =>
   scene.setOption("plates", e.target.checked),
 );
 
-// ---- étiquettes : on/off + niveau d'affichage (dernier cran = Automatique) ----
+// ---- étiquettes : on/off (réglages) + niveau/auto (barre du bas) ----
 $("#opt-labels").addEventListener("change", (e) =>
   scene.setOption("labelsOn", e.target.checked),
 );
-const labelSlider = $("#opt-labelDepth");
-const labelVal = $("#val-labelDepth");
-const autoPos = scene.getMaxDepth() + 1;
-labelSlider.max = String(autoPos);
-labelSlider.value = String(autoPos);
-function applyLabelLevel() {
-  const v = parseInt(labelSlider.value, 10);
-  if (v >= autoPos) {
-    scene.setOption("labelAuto", true);
-    labelVal.textContent = "Automatique";
-  } else {
-    scene.setOption("labelAuto", false);
-    scene.setOption("labelDepth", v);
-    labelVal.textContent = "Niveau " + v;
-  }
-}
-labelSlider.addEventListener("input", applyLabelLevel);
-applyLabelLevel();
+lvlSlider.max = String(scene.getMaxDepth());
+lvlSlider.addEventListener("input", () => {
+  if (lvlAuto.checked) return;
+  const v = parseInt(lvlSlider.value, 10);
+  scene.setOption("labelLevel", v);
+  lvlVal.textContent = lvlText(v);
+});
+lvlAuto.addEventListener("change", () => {
+  const auto = lvlAuto.checked;
+  lvlSlider.disabled = auto;
+  scene.setOption("labelAuto", auto);
+  if (!auto) scene.setOption("labelLevel", parseInt(lvlSlider.value, 10));
+});
 
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

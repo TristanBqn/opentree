@@ -41,9 +41,6 @@ function glowTexture() {
   return t;
 }
 
-// révélation des étiquettes au zoom : fraction de fitDist par profondeur
-const REVEAL = { 1: 0.8, 2: 0.52, 3: 0.38 };
-
 export function createScene(container, callbacks = {}, islands = []) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -147,7 +144,7 @@ export function createScene(container, callbacks = {}, islands = []) {
     glow: 1,
     curve: 1,
     fileSize: 1,
-    labelDepth: 2,
+    labelLevel: 0,
     labelAuto: true,
     labelsOn: true,
     autoRotate: false,
@@ -203,6 +200,8 @@ export function createScene(container, callbacks = {}, islands = []) {
   controls.target.copy(centroid);
   const fogScale = Math.max(1, fitDist / 34);
   const sizeScale = Math.max(1, fitDist / 44);
+  // ligne de base : le 100 % du slider rend ce que l'ancien 40 % rendait
+  const FILE_SIZE_BASE = 0.4;
 
   const discTex = discTexture(),
     glowTex = glowTexture();
@@ -583,7 +582,8 @@ export function createScene(container, callbacks = {}, islands = []) {
     }
     points.geometry.attributes.color.array.set(baseCol);
     points.geometry.attributes.color.needsUpdate = true;
-    points.material.size = theme.file.size * opts.fileSize * sizeScale;
+    points.material.size =
+      theme.file.size * opts.fileSize * sizeScale * FILE_SIZE_BASE;
     points.material.blending =
       theme.file.blend === "additive"
         ? THREE.AdditiveBlending
@@ -656,18 +656,18 @@ export function createScene(container, callbacks = {}, islands = []) {
       col[i * 4] = baseCol[i * 4];
       col[i * 4 + 1] = baseCol[i * 4 + 1];
       col[i * 4 + 2] = baseCol[i * 4 + 2];
-      col[i * 4 + 3] = vis ? 1 : 0.15;
+      col[i * 4 + 3] = vis ? 1 : 0.075;
       if (vis && query) nMatch++;
     }
     points.geometry.attributes.color.needsUpdate = true;
     branchSegGroups.forEach(({ bid, line, arc, vein }) => {
       const on = !isolated || isolated.bid === bid;
       if (vein) {
-        line.material.uniforms.uOpacity.value = on ? 1 : 0.15;
+        line.material.uniforms.uOpacity.value = on ? 1 : 0.075;
         return;
       }
       line.material.opacity =
-        (arc ? theme.arc.opacity : theme.branch.opacity) * (on ? 1 : 0.15);
+        (arc ? theme.arc.opacity : theme.branch.opacity) * (on ? 1 : 0.075);
     });
     glowSprites.forEach((sp) => {
       const on = !isolated || isolated.bid === sp.userData.bid;
@@ -694,7 +694,7 @@ export function createScene(container, callbacks = {}, islands = []) {
       if (isolated) {
         const own = branches[isolated.bid]?.islandId === isl.id;
         el.style.opacity = own ? "1" : ".25";
-        ring.material.opacity = theme.ring.opacity * (own ? 1 : 0.15);
+        ring.material.opacity = theme.ring.opacity * (own ? 1 : 0.075);
       } else {
         el.style.opacity = "1";
       }
@@ -779,7 +779,7 @@ export function createScene(container, callbacks = {}, islands = []) {
     ndc.y = -((clientY - r.top) / r.height) * 2 + 1;
     ray.setFromCamera(ndc, camera);
     ray.params.Points.threshold =
-      theme.file.size * opts.fileSize * sizeScale * 0.9;
+      theme.file.size * opts.fileSize * sizeScale * FILE_SIZE_BASE * 0.9;
     const hits = ray.intersectObject(points, false);
     for (const h of hits) {
       if (fileVisible(files[h.index])) return h.index;
@@ -851,13 +851,30 @@ export function createScene(container, callbacks = {}, islands = []) {
 
   // ===== LABEL DECLUTTER : projection écran + masquage des chevauchements ===
   const _v = new THREE.Vector3();
+  const maxLabelDepth = dirs.reduce((m, d) => Math.max(m, d.depth), 1);
+  let lastAutoLevel = -1;
+  // distance caméra → niveau d'étiquettes (0 = vue d'ensemble, aucune étiquette)
+  function levelFromZoom(dist) {
+    const r = dist / fitDist;
+    if (r >= 0.9) return 0;
+    let lvl = 0;
+    for (let L = 1; L <= maxLabelDepth; L++) {
+      if (r <= 0.9 * Math.pow(0.66, L - 1)) lvl = L;
+    }
+    return lvl;
+  }
   function declutterLabels() {
     const camPos = camera.position;
     const W = container.clientWidth,
       H = container.clientHeight;
-    // vue d'ensemble (suffisamment dézoomé) → aucune étiquette de branche
-    const overview =
-      !isolated && camPos.distanceTo(controls.target) > fitDist * 0.9;
+    // niveau affiché : auto = déduit du zoom, manuel = valeur du slider
+    const effLevel = opts.labelAuto
+      ? levelFromZoom(camPos.distanceTo(controls.target))
+      : opts.labelLevel;
+    if (opts.labelAuto && effLevel !== lastAutoLevel) {
+      lastAutoLevel = effLevel;
+      callbacks.onLabelLevel?.(effLevel);
+    }
     const cand = [];
     for (const l of labels) {
       if (!opts.labelsOn || l.el.classList.contains("hidden")) {
@@ -866,23 +883,10 @@ export function createScene(container, callbacks = {}, islands = []) {
       }
       l.obj.getWorldPosition(_v);
       const dist = camPos.distanceTo(_v);
-      // révélation : auto = au zoom ; niveau fixe = profondeur ≤ N — sauf branche isolée
-      if (!l.isoShow) {
-        if (opts.labelAuto) {
-          if (overview) {
-            l.el.style.visibility = "hidden";
-            continue;
-          }
-          const dep = Math.min(3, Math.max(1, l.node.depth));
-          const reveal = fitDist * REVEAL[dep] * 1.1;
-          if (dist > reveal) {
-            l.el.style.visibility = "hidden";
-            continue;
-          }
-        } else if (l.node.depth > opts.labelDepth) {
-          l.el.style.visibility = "hidden";
-          continue;
-        }
+      // niveau exact (non cumulatif) ; une branche isolée montre tout son arbre
+      if (!l.isoShow && (effLevel <= 0 || l.node.depth !== effLevel)) {
+        l.el.style.visibility = "hidden";
+        continue;
       }
       _v.project(camera);
       // derrière la caméra ou hors-champ → masquer
