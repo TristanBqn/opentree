@@ -169,6 +169,11 @@ export function createScene(container, callbacks = {}, islands = []) {
     files.push(...f.files);
   });
   const hostIsland = islands.find((i) => i.kind === "host");
+  // un nœud est "interne à un conteneur" selon le kind de son île, pas selon son
+  // iid : avec plusieurs hôtes, seul le 1er a l'id "host" (cf. snapshot.mjs)
+  const containerIids = new Set(
+    islands.filter((i) => i.kind === "container").map((i) => i.id),
+  );
 
   // île → rayon horizontal (pour les anneaux)
   islands.forEach((isl) => {
@@ -678,7 +683,7 @@ export function createScene(container, callbacks = {}, islands = []) {
       const d = l.node;
       const topNode = topBranchOf(d);
       const branchOn = !isolated || topNode === isolated;
-      const isCont = d.iid !== "host";
+      const isCont = containerIids.has(d.iid);
       // containers : étiquettes internes seulement quand la branche est isolée ;
       // sinon, la visibilité dépend du zoom (gérée image par image dans declutterLabels)
       l.allowed = branchOn && (!isCont || (isolated && topNode === isolated));
