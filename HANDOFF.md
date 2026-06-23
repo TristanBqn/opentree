@@ -1,4 +1,4 @@
-# OpenTree — Handoff (2026-06-20)
+# OpenTree — Handoff (2026-06-23)
 
 État de reprise du déploiement d'OpenTree en plugin OpenClaw sur le VPS Hetzner.
 
@@ -16,52 +16,80 @@ et les conteneurs Docker.
 - Accès **via tunnel SSH** : `ssh -L 18789:127.0.0.1:18789 openclaw@<VPS>` puis
   `http://localhost:18789/opentree/` → le viewer 3D s'affiche.
 - Le backend renvoie de **vraies données VPS** : host `openclaw`, `4 vCPU · 7,6 Gi`,
-  `disque 36G / 150G`. `/opentree/api/snapshot` répond en ~60 ms.
+  `disque 36G / 150G`.
+- **Le scan pointe sur `/app` ET `/home/node/.openclaw`** via la variable
+  `OPENTREE_HOST_ROOT` (voir §1b). Les deux îles apparaissent dans le viewer comme
+  « openclaw » et « .openclaw ». Conteneurs Docker présents avec CPU/RAM/ports.
+- **Réponses gzip** : le backend sérialise le snapshot une seule fois, compresse en
+  gzip à la construction du cache ; les clients qui envoient `Accept-Encoding: gzip`
+  reçoivent la version compressée (gain ≈ 4-5× sur la taille du JSON).
+- **Rendu à la demande** : quand la scène est immobile, aucun rendu WebGL ni passage
+  étiquettes CSS2D ne s'exécute (0 % GPU au repos). Raycast throttlé à 1/frame.
+  Passage étiquettes limité à ~15 fps même pendant l'orbite.
 - Le dépôt **github.com/TristanBqn/opentree** est la source de vérité (public).
 - Le dépôt `neuronal_skills` a été **remis dans son état d'origine** (le push initial
   par erreur a été annulé : PR fermée + branche distante supprimée, `main` intact).
 
 ## CE QU'IL RESTE À FAIRE
 
-### 1. Pointer le scan sur `/app` + voir les conteneurs Docker (en cours)
+### 1a. Pointer le scan sur `/app` + voir les conteneurs Docker — ✅ FAIT (2026-06-22)
 
-Actuellement le viewer affiche « 0 fichier · 0 conteneur · 1 dossier » car :
-
-- il scanne `~/openclaw` = `/home/node/openclaw` (inexistant dans le conteneur) ;
-- le conteneur gateway n'a pas accès au socket Docker.
-
-**Décision prise** : cartographier `/app` (l'install OpenClaw) + monter le socket Docker.
-**Sécurité** : monter `/var/run/docker.sock` donne au gateway le contrôle de Docker (≈ root) — accepté.
-
-**À faire** — modifier le docker-compose du gateway. D'abord localiser et inspecter :
-
-```bash
-docker inspect openclaw-openclaw-gateway-1 --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}'
-docker inspect openclaw-openclaw-gateway-1 --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'
-```
-
-Puis, dans le service gateway, ajouter :
+Réalisé en éditant `docker-compose.override.yml` du gateway (chemin réel :
+`/home/openclaw/openclaw/docker-compose.override.yml`). Le service s'appelle
+`openclaw-gateway`. Bloc ajouté sous le service (indentation alignée sur `build:`) :
 
 ```yaml
 environment:
-  - OPENTREE_HOST_ROOT=/app
-  - OPENTREE_HOST_NAME=openclaw
+  OPENTREE_HOST_ROOT: /app
+  OPENTREE_HOST_NAME: openclaw
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-⚠️ Indentation YAML : `environment:` et `volumes:` doivent être **imbriqués sous le service
-gateway** (même niveau que `image:`/`container_name:`), pas à la racine du fichier. S'ils
-existent déjà dans le service, ajouter seulement les lignes `-` manquantes.
+`environment` (style map) **fusionne** avec celui du base ; `volumes` (liste) se
+**concatène**. Vérif du merge avant d'appliquer : `docker compose config | grep -iE 'OPENTREE|docker.sock'`.
+Appliqué par `docker compose up -d openclaw-gateway`. Persiste aux redémarrages.
 
-Recréer : `docker compose -f <compose> up -d` puis recharger `/opentree/`.
+> ⚠️ Cette config vit **sur le VPS uniquement** (override compose), pas dans le dépôt.
 
-> NB : sans binaire `docker` dans le conteneur, l'arbre INTERNE de chaque conteneur
-> sera vide (l'appel `docker exec find` échoue), mais les conteneurs apparaîtront
-> avec leurs stats (CPU/RAM/ports). Pour les arbres internes, il faudrait réécrire
-> `lib/docker.mjs:execFind` pour utiliser l'API exec du socket (pas fait).
+> Limite acceptée : sans binaire `docker` dans le conteneur, l'arbre INTERNE de
+> chaque conteneur est vide (`lib/docker.mjs:execFind` appelle `docker exec` en CLI →
+> échoue silencieusement). Les conteneurs apparaissent quand même avec stats/ports
+> (listés via l'API HTTP du socket : `listContainers`/`dockerGet`). Pour les arbres
+> internes, réécrire `execFind` sur l'API exec du socket (POST `/containers/{id}/exec`).
 
-### 2. URL permanente + auth (plus tard)
+### 1b. Scanner plusieurs racines hôte (`/app` + `.openclaw`) — ✅ FAIT (2026-06-23)
+
+`lib/snapshot.mjs` : `parseHosts(rootStr, nameStr)` parse des listes comma-separated.
+`lib/cache.mjs` : pré-sérialise + pré-compresse (gzip) le snapshot à la construction.
+`lib/handlers.mjs` : content negotiation `Accept-Encoding: gzip` + `Vary`.
+`inspector/scene-v2.js` : section légende par île hôte.
+
+Pour activer le double scan sur le VPS, mettre à jour `docker-compose.override.yml` :
+
+```yaml
+environment:
+  OPENTREE_HOST_ROOT: /app,/home/node/.openclaw
+  OPENTREE_HOST_NAME: openclaw,.openclaw
+```
+
+Puis `docker compose up -d openclaw-gateway`.
+
+### 1c. Rendu à la demande — ✅ FAIT (2026-06-23)
+
+`inspector/scene-v2.js` uniquement. Trois optimisations :
+
+- **Rendu à la demande** : `needsRender` flag ; `controls.addEventListener("change")`
+  déclenche un rendu. Immobile = 0 appel GPU.
+- **Raycast throttlé** : `pendingPick` stocke la position souris, un seul `pick()` par frame.
+- **Étiquettes CSS2D throttlées à ~15 fps** : `declutterLabels()` + `labelRenderer.render()`
+  max toutes les 66 ms (le `zOrder()` du renderer est O(n) sur tous les labels — réduire
+  la fréquence est le seul levier sans changer le nombre d'objets dans la scène).
+
+Vérifié avec Playwright (Chromium headless) : 0 erreur console, drag fonctionne, zoom
+fonctionne, deux sections légende visibles.
+
+### 2. URL permanente + auth (plus tard) — PROCHAINE ÉTAPE
 
 - Tailscale **n'est pas installé** sur le VPS. Pour l'URL permanente :
   `sudo snap install tailscale` → `sudo tailscale up` → `tailscale serve --bg 18789`
@@ -153,8 +181,8 @@ Recréer : `docker compose -f <compose> up -d` puis recharger `/opentree/`.
 git -C ~/opentree push origin HEAD:main
 # VPS : tirer + recopier l'essentiel + redémarrer
 cd ~/opentree && git pull
-rm -rf ~/.openclaw/extensions/opentree/inspector ~/.openclaw/extensions/opentree/dist
-cp -r ~/opentree/inspector ~/opentree/dist ~/.openclaw/extensions/opentree/
+rm -rf ~/.openclaw/extensions/opentree/inspector ~/.openclaw/extensions/opentree/dist ~/.openclaw/extensions/opentree/lib
+cp -r ~/opentree/inspector ~/opentree/dist ~/opentree/lib ~/.openclaw/extensions/opentree/
 docker restart openclaw-openclaw-gateway-1
 ```
 
