@@ -565,8 +565,8 @@ export function createScene(container, callbacks = {}, islands = []) {
       });
       const obj = new CSS2DObject(el);
       obj.position.set(...d.pos);
-      sceneRoot.add(obj);
-      labels.push({ obj, node: d, el });
+      el.style.display = "none";
+      labels.push({ obj, node: d, el, mounted: false });
     });
   }
 
@@ -935,6 +935,20 @@ export function createScene(container, callbacks = {}, islands = []) {
       c.l.el.style.opacity = (
         c.l.el.classList.contains("dim") ? o * 0.25 : o
       ).toFixed(2);
+    }
+    // virtualisation : seul l'ensemble réellement visible reste dans le graphe.
+    // CSS2DRenderer trie (zOrder) et écrit le zIndex de TOUS les CSS2DObject montés,
+    // sans filtrer sur .visible — démonter les invisibles élimine ce coût O(n).
+    for (const l of labels) {
+      const want = l.el.style.visibility === "visible";
+      if (want && !l.mounted) {
+        sceneRoot.add(l.obj);
+        l.mounted = true;
+      } else if (!want && l.mounted) {
+        sceneRoot.remove(l.obj);
+        l.mounted = false;
+        l.el.style.display = "none";
+      }
     }
   }
 
