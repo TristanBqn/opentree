@@ -47,8 +47,7 @@ export function registerOpenTree(api: OpenClawPluginApi, deps: Deps): void {
       stateDir = ctx.stateDir || deps.stateDir;
       const eventsPath = join(stateDir, "events.ndjson");
       watcher = startWatcher({
-        absRoot: deps.hosts[0].root,
-        rootName: deps.hosts[0].name,
+        roots: deps.hosts.map((h) => ({ absRoot: h.root, rootName: h.name })),
         eventsPath,
       });
     },
