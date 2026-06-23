@@ -397,7 +397,7 @@ export function createScene(container, callbacks = {}, islands = []) {
   function buildPoints() {
     const n = files.length;
     basePos = new Float32Array(n * 3);
-    baseCol = new Float32Array(n * 3);
+    baseCol = new Float32Array(n * 4);
     fileBranch = new Array(n);
     files.forEach((f, i) => {
       basePos[i * 3] = f.pos[0];
@@ -408,7 +408,10 @@ export function createScene(container, callbacks = {}, islands = []) {
     });
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(basePos, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(baseCol, 3));
+    geo.setAttribute(
+      "color",
+      new THREE.BufferAttribute(new Float32Array(n * 4), 4),
+    );
     const mat = new THREE.PointsMaterial({
       map: discTex,
       vertexColors: true,
@@ -573,9 +576,10 @@ export function createScene(container, callbacks = {}, islands = []) {
       const bi = fileBranch[i];
       const hex = bi < 0 ? theme.misc : theme.palette[branches[bi].cidx];
       const col = new THREE.Color(hex);
-      baseCol[i * 3] = col.r;
-      baseCol[i * 3 + 1] = col.g;
-      baseCol[i * 3 + 2] = col.b;
+      baseCol[i * 4] = col.r;
+      baseCol[i * 4 + 1] = col.g;
+      baseCol[i * 4 + 2] = col.b;
+      baseCol[i * 4 + 3] = 1;
     }
     points.geometry.attributes.color.array.set(baseCol);
     points.geometry.attributes.color.needsUpdate = true;
@@ -644,33 +648,26 @@ export function createScene(container, callbacks = {}, islands = []) {
     return true;
   }
   function refresh() {
-    const dim = new THREE.Color(theme.file.dim);
     const col = points.geometry.attributes.color.array;
     let nMatch = 0;
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const vis = fileVisible(f);
-      if (vis) {
-        col[i * 3] = baseCol[i * 3];
-        col[i * 3 + 1] = baseCol[i * 3 + 1];
-        col[i * 3 + 2] = baseCol[i * 3 + 2];
-        if (query) nMatch++;
-      } else {
-        const t = isolated ? 0.06 : 0.14;
-        col[i * 3] = THREE.MathUtils.lerp(dim.r, baseCol[i * 3], t);
-        col[i * 3 + 1] = THREE.MathUtils.lerp(dim.g, baseCol[i * 3 + 1], t);
-        col[i * 3 + 2] = THREE.MathUtils.lerp(dim.b, baseCol[i * 3 + 2], t);
-      }
+      col[i * 4] = baseCol[i * 4];
+      col[i * 4 + 1] = baseCol[i * 4 + 1];
+      col[i * 4 + 2] = baseCol[i * 4 + 2];
+      col[i * 4 + 3] = vis ? 1 : 0.15;
+      if (vis && query) nMatch++;
     }
     points.geometry.attributes.color.needsUpdate = true;
     branchSegGroups.forEach(({ bid, line, arc, vein }) => {
       const on = !isolated || isolated.bid === bid;
       if (vein) {
-        line.material.uniforms.uOpacity.value = on ? 1 : 0.05;
+        line.material.uniforms.uOpacity.value = on ? 1 : 0.15;
         return;
       }
       line.material.opacity =
-        (arc ? theme.arc.opacity : theme.branch.opacity) * (on ? 1 : 0.08);
+        (arc ? theme.arc.opacity : theme.branch.opacity) * (on ? 1 : 0.15);
     });
     glowSprites.forEach((sp) => {
       const on = !isolated || isolated.bid === sp.userData.bid;
