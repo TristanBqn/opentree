@@ -61,6 +61,7 @@ let lastMatchTotal = 0;
 let resultsOpen = false;
 
 function renderResults() {
+  if (!scene) return;
   const results = $("#results");
   results.innerHTML = "";
   const sel = new Set(scene.isIsolated());

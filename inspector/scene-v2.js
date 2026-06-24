@@ -727,6 +727,8 @@ export function createScene(container, callbacks = {}, islands = []) {
         ring.material.opacity = theme.ring.opacity * (own ? 1 : 0.075);
       } else {
         el.style.opacity = "1";
+        ring.material.opacity =
+          theme.ring.opacity * (isl.kind === "host" ? 0.55 : 1);
       }
     });
 
