@@ -55,6 +55,52 @@ function nodeMetaLine(n) {
     : `${langOf(n.ext)} · ${formatSize(n.size)}`;
 }
 
+// ---- results list state (déclaré avant createScene : 1er rendu synchrone → onCounts) ---
+let lastMatches = [];
+let lastMatchTotal = 0;
+let resultsOpen = false;
+
+function renderResults() {
+  const results = $("#results");
+  results.innerHTML = "";
+  const sel = new Set(scene.isIsolated());
+  for (const node of lastMatches) {
+    const row = document.createElement("div");
+    row.className = "r-row" + (sel.has(node) ? " selected" : "");
+    const ico = document.createElement("span");
+    ico.className = "r-ico";
+    ico.textContent = node.type === "dir" ? "📁" : "📄";
+    const nm = document.createElement("span");
+    nm.className = "r-name";
+    nm.textContent = node.name;
+    const pth = document.createElement("span");
+    pth.className = "r-path";
+    pth.textContent = node.path;
+    row.append(ico, nm, pth);
+    row.addEventListener("click", () => scene.toggleIsolated(node));
+    results.appendChild(row);
+  }
+  if (lastMatchTotal > lastMatches.length) {
+    const more = document.createElement("div");
+    more.className = "r-more";
+    more.textContent = `… +${lastMatchTotal - lastMatches.length} autres`;
+    results.appendChild(more);
+  }
+}
+
+function openResults() {
+  resultsOpen = true;
+  $("#results").classList.add("open");
+  $("#count").classList.add("open");
+  renderResults();
+}
+
+function closeResults() {
+  resultsOpen = false;
+  $("#results").classList.remove("open");
+  $("#count").classList.remove("open");
+}
+
 // ---- callbacks scène ------------------------------------------------------
 const callbacks = {
   onContext(node, x, y) {
@@ -86,15 +132,21 @@ const callbacks = {
   onIsland(isl) {
     openIsland(isl);
   },
-  onCounts({ match, total, isolated }) {
+  onCounts({ match, total, isolated, matches }) {
     const st = scene ? scene.getStats() : null;
+    const searching = match < total;
     $("#count").textContent = isolated
-      ? `${isolated} · ${match} fichiers`
-      : match < total
-        ? `${match} / ${total} fichiers`
+      ? isolated
+      : searching
+        ? `${match} / ${total} éléments`
         : st
-          ? `${st.containers} conteneurs · ${total} fichiers · ${st.dirs} dossiers`
-          : `${total} fichiers`;
+          ? `${st.containers} conteneurs · ${st.files} fichiers · ${st.dirs} dossiers`
+          : `${total} éléments`;
+    $("#count").classList.toggle("has-results", searching);
+    lastMatches = matches || [];
+    lastMatchTotal = match;
+    if (!searching) closeResults();
+    else if (resultsOpen) renderResults();
     const chip = $("#isolate-chip");
     if (isolated) {
       chip.classList.add("show");
@@ -156,7 +208,7 @@ function renderLegend() {
       b.title = `${isl.statusTxt} · ${isl.stats}`;
       b.addEventListener("click", () => {
         const cur = scene.isIsolated();
-        if (cur && cur.bid === l.node.bid) scene.resetView();
+        if (cur.length === 1 && cur[0].bid === l.node.bid) scene.resetView();
         else scene.setIsolated(l.node);
       });
       wrap.appendChild(b);
@@ -178,7 +230,8 @@ function renderLegend() {
           b.title = `${l.count} fichiers · ${l.uses} utilisations / 30 j`;
           b.addEventListener("click", () => {
             const cur = scene.isIsolated();
-            if (cur && cur.bid === l.node.bid) scene.resetView();
+            if (cur.length === 1 && cur[0].bid === l.node.bid)
+              scene.resetView();
             else scene.setIsolated(l.node);
           });
           wrap.appendChild(b);
@@ -195,8 +248,14 @@ document.body.dataset.theme = "parchment";
 scene.setTheme("parchment");
 
 // ---- search -----------------------------------------------------------------
+$("#count").addEventListener("click", () => {
+  if ($("#count").classList.contains("has-results")) {
+    resultsOpen ? closeResults() : openResults();
+  }
+});
 const search = $("#search");
 search.addEventListener("input", () => {
+  if (scene.isIsolated().length) scene.setIsolated(null);
   scene.setQuery(search.value);
   $("#search-clear").classList.toggle("show", !!search.value);
 });
@@ -204,6 +263,7 @@ $("#search-clear").addEventListener("click", () => {
   search.value = "";
   scene.setQuery("");
   $("#search-clear").classList.remove("show");
+  closeResults();
   search.focus();
 });
 
