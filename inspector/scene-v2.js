@@ -5,6 +5,7 @@ import {
   CSS2DObject,
 } from "three/addons/renderers/CSS2DRenderer.js";
 import { flatten } from "./data.js";
+import { nameMatches, collectSubtrees, centroidRadius } from "./search.js";
 import { layout, translate, assignBranchesMulti } from "./layout.js";
 import { THEMES } from "./themes.js";
 
@@ -467,10 +468,6 @@ export function createScene(container, callbacks = {}, islands = []) {
       glowSprites.push(sp);
     });
   }
-  function topBranchOf(node) {
-    return node.bid == null || node.bid < 0 ? null : branches[node.bid].node;
-  }
-
   // ===== SOCLES (anneaux + plaques) des îlots =============================
   const islandChrome = [];
   function buildIslandChrome() {
@@ -562,10 +559,11 @@ export function createScene(container, callbacks = {}, islands = []) {
       });
       // en mode branche isolée : stats au survol
       el.addEventListener("pointerenter", (e) => {
-        if (isolated) callbacks.onContext?.(d, e.clientX, e.clientY);
+        if (isolatedNodes.length)
+          callbacks.onContext?.(d, e.clientX, e.clientY);
       });
       el.addEventListener("pointerleave", () => {
-        if (isolated) callbacks.onContext?.(null);
+        if (isolatedNodes.length) callbacks.onContext?.(null);
       });
       const obj = new CSS2DObject(el);
       obj.position.set(...d.pos);
@@ -645,16 +643,24 @@ export function createScene(container, callbacks = {}, islands = []) {
   }
 
   // ===== STATE: isolate + search ==========================================
-  let isolated = null;
+  let isolatedNodes = [];
+  let isoFiles = null;
+  let isoDirs = null;
+  let isoBids = null;
   let query = "";
   function fileVisible(f) {
-    if (isolated && topBranchOf(f) !== isolated) return false;
-    if (query && !f.path.toLowerCase().includes(query)) return false;
+    if (isolatedNodes.length) return isoFiles.has(f);
+    if (query) return f.name.toLowerCase().includes(query);
     return true;
   }
   function refresh() {
+    const iso = isolatedNodes.length > 0;
+    const CAP = 300;
+    const matches = query ? [] : null;
+    let nFileMatch = 0;
+    let nDirMatch = 0;
+
     const col = points.geometry.attributes.color.array;
-    let nMatch = 0;
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const vis = fileVisible(f);
@@ -662,11 +668,15 @@ export function createScene(container, callbacks = {}, islands = []) {
       col[i * 4 + 1] = baseCol[i * 4 + 1];
       col[i * 4 + 2] = baseCol[i * 4 + 2];
       col[i * 4 + 3] = vis ? 1 : 0.075;
-      if (vis && query) nMatch++;
+      if (query && nameMatches(f, query)) {
+        nFileMatch++;
+        if (matches.length < CAP) matches.push(f);
+      }
     }
     points.geometry.attributes.color.needsUpdate = true;
+
     branchSegGroups.forEach(({ bid, line, arc, vein }) => {
-      const on = !isolated || isolated.bid === bid;
+      const on = iso ? isoBids.has(bid) : !query;
       if (vein) {
         line.material.uniforms.uOpacity.value = on ? 1 : 0.075;
         return;
@@ -674,40 +684,63 @@ export function createScene(container, callbacks = {}, islands = []) {
       line.material.opacity =
         (arc ? theme.arc.opacity : theme.branch.opacity) * (on ? 1 : 0.075);
     });
+
     glowSprites.forEach((sp) => {
-      const on = !isolated || isolated.bid === sp.userData.bid;
-      sp.material.opacity =
-        theme.glow.opacity * opts.glow * (on ? 1 : 0.06) * (query ? 0.4 : 1);
+      const on = iso ? isoBids.has(sp.userData.bid) : !query;
+      sp.material.opacity = theme.glow.opacity * opts.glow * (on ? 1 : 0.075);
     });
+
     labels.forEach((l) => {
       const d = l.node;
-      const topNode = topBranchOf(d);
-      const branchOn = !isolated || topNode === isolated;
-      const isCont = containerIids.has(d.iid);
-      // containers : étiquettes internes seulement quand la branche est isolée ;
-      // sinon, la visibilité dépend du zoom (gérée image par image dans declutterLabels)
-      l.allowed = branchOn && (!isCont || (isolated && topNode === isolated));
-      l.isoShow = !!(isolated && topNode === isolated);
-      l.el.classList.toggle("hidden", !l.allowed);
-      l.el.classList.toggle("dim", !!(isolated && !branchOn));
+      l.queryMatch = nameMatches(d, query);
+      if (l.queryMatch) {
+        nDirMatch++;
+        if (matches.length < CAP) matches.push(d);
+      }
+      let allowed;
+      let isoShow = false;
+      if (iso) {
+        allowed = isoDirs.has(d);
+        isoShow = allowed;
+      } else if (query) {
+        allowed = l.queryMatch;
+      } else {
+        allowed = !containerIids.has(d.iid);
+      }
+      l.allowed = allowed;
+      l.isoShow = isoShow;
+      l.el.classList.toggle("hidden", !allowed);
+      l.el.classList.toggle("dim", false);
     });
+
+    const ownIslands = iso
+      ? new Set(isolatedNodes.map((n) => branches[n.bid]?.islandId))
+      : null;
     islandChrome.forEach(({ isl, ring, disc, el }) => {
       const vis = opts.plates;
       ring.visible = vis;
       disc.visible = vis;
       el.style.display = vis ? "" : "none";
-      if (isolated) {
-        const own = branches[isolated.bid]?.islandId === isl.id;
+      if (iso) {
+        const own = ownIslands.has(isl.id);
         el.style.opacity = own ? "1" : ".25";
         ring.material.opacity = theme.ring.opacity * (own ? 1 : 0.075);
       } else {
         el.style.opacity = "1";
       }
     });
+
+    const total = files.length + labels.length;
     callbacks.onCounts?.({
-      match: query ? nMatch : files.length,
-      total: files.length,
-      isolated: isolated ? isolated.name : null,
+      match: query ? nFileMatch + nDirMatch : total,
+      total,
+      isolated:
+        isolatedNodes.length === 0
+          ? null
+          : isolatedNodes.length === 1
+            ? isolatedNodes[0].name
+            : `${isolatedNodes.length} éléments`,
+      matches,
     });
     needsRender = true;
     labelsDirty = true;
@@ -726,10 +759,27 @@ export function createScene(container, callbacks = {}, islands = []) {
     if (k === "curve") applyColors();
     refresh();
   }
-  function setIsolated(node) {
-    isolated = node;
+  function applyIsolation(nodes) {
+    isolatedNodes = nodes;
+    if (nodes.length) {
+      const { files: fs, dirs: ds } = collectSubtrees(nodes);
+      isoFiles = fs;
+      isoDirs = ds;
+      isoBids = new Set(nodes.map((n) => n.bid));
+    } else {
+      isoFiles = isoDirs = isoBids = null;
+    }
     refresh();
-    if (node) flyTo(node);
+    if (nodes.length) frameToIso();
+  }
+  function setIsolated(node) {
+    applyIsolation(node ? [node] : []);
+  }
+  function toggleIsolated(node) {
+    const has = isolatedNodes.includes(node);
+    applyIsolation(
+      has ? isolatedNodes.filter((n) => n !== node) : [...isolatedNodes, node],
+    );
   }
   function setQuery(q) {
     query = (q || "").trim().toLowerCase();
@@ -763,9 +813,27 @@ export function createScene(container, callbacks = {}, islands = []) {
       toC: camTo,
     };
   }
+  function frameToIso() {
+    if (!isoFiles || isoFiles.size === 0) return;
+    const pts = [];
+    isoFiles.forEach((f) => pts.push(f.pos));
+    const cr = centroidRadius(pts);
+    if (!cr) return;
+    const target = new THREE.Vector3(cr.cx, cr.cy, cr.cz);
+    const r = Math.max(cr.r, 6);
+    const dist = (r / Math.sin((camera.fov * Math.PI) / 180 / 2)) * 1.15;
+    const dirToCam = camera.position.clone().sub(controls.target).normalize();
+    const camTo = target.clone().add(dirToCam.multiplyScalar(dist));
+    tween = {
+      t: 0,
+      fromT: controls.target.clone(),
+      toT: target,
+      fromC: camera.position.clone(),
+      toC: camTo,
+    };
+  }
   function resetView() {
-    isolated = null;
-    refresh();
+    applyIsolation([]);
     tween = {
       t: 0,
       fromT: controls.target.clone(),
@@ -796,7 +864,8 @@ export function createScene(container, callbacks = {}, islands = []) {
     const i = pick(x, y);
     raycanvas.style.cursor = i >= 0 ? "pointer" : "grab";
     // en mode branche isolée : stats au survol d'un fichier
-    if (isolated) callbacks.onContext?.(i >= 0 ? files[i] : null, x, y);
+    if (isolatedNodes.length)
+      callbacks.onContext?.(i >= 0 ? files[i] : null, x, y);
   }
   raycanvas.addEventListener("pointermove", (e) => {
     pendingPick = { x: e.clientX, y: e.clientY };
@@ -889,7 +958,11 @@ export function createScene(container, callbacks = {}, islands = []) {
       l.obj.getWorldPosition(_v);
       const dist = camPos.distanceTo(_v);
       // niveau exact (non cumulatif) ; une branche isolée montre tout son arbre
-      if (!l.isoShow && (effLevel <= 0 || l.node.depth !== effLevel)) {
+      if (
+        !l.isoShow &&
+        !l.queryMatch &&
+        (effLevel <= 0 || l.node.depth !== effLevel)
+      ) {
         l.el.style.visibility = "hidden";
         continue;
       }
@@ -1000,6 +1073,7 @@ export function createScene(container, callbacks = {}, islands = []) {
     setTheme,
     setOption,
     setIsolated,
+    toggleIsolated,
     setQuery,
     resetView,
     flyTo,
@@ -1019,6 +1093,6 @@ export function createScene(container, callbacks = {}, islands = []) {
       containers: islands.filter((i) => i.kind === "container").length,
     }),
     getMaxDepth: () => dirs.reduce((m, d) => Math.max(m, d.depth), 1),
-    isIsolated: () => isolated,
+    isIsolated: () => isolatedNodes,
   };
 }
