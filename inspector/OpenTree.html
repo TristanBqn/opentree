@@ -953,6 +953,41 @@
         font-style: italic;
       }
 
+      /* compteur segmenté (mode isolation) */
+      #count .c-name {
+        font-weight: 600;
+      }
+      #count .c-seg {
+        cursor: pointer;
+        text-decoration: underline dotted var(--ink-soft);
+        text-underline-offset: 3px;
+      }
+      #count .c-seg:hover {
+        color: var(--accent);
+      }
+      #count .c-seg.active {
+        color: var(--accent);
+        text-decoration-style: solid;
+      }
+
+      /* liste virtualisée (branche isolée) — ROW_H = 30 dans main-v2.js */
+      .results.virtual {
+        position: relative;
+      }
+      .r-sizer {
+        width: 100%;
+      }
+      .results.virtual .r-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 30px;
+        box-sizing: border-box;
+      }
+      .results.virtual .r-row:last-child {
+        border-bottom: 1px solid var(--hair);
+      }
+
       /* ============ LABEL LEVEL BAR (bottom-center) ============ */
       #label-bar {
         position: fixed;

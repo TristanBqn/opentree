@@ -1096,5 +1096,11 @@ export function createScene(container, callbacks = {}, islands = []) {
     }),
     getMaxDepth: () => dirs.reduce((m, d) => Math.max(m, d.depth), 1),
     isIsolated: () => isolatedNodes,
+    getIsolatedContents: () => ({
+      files: isoFiles ? [...isoFiles] : [],
+      dirs: isoDirs
+        ? [...isoDirs].filter((d) => !isolatedNodes.includes(d))
+        : [],
+    }),
   };
 }

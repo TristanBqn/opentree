@@ -59,26 +59,43 @@ function nodeMetaLine(n) {
 let lastMatches = [];
 let lastMatchTotal = 0;
 let resultsOpen = false;
+let resultsMode = null; // 'search' | 'iso-files' | 'iso-dirs'
+const ROW_H = 30; // doit matcher .results.virtual .r-row { height } dans OpenTree.html
+let virtScroll = null; // handler de scroll de la liste virtualisée (cleanup)
 
+function makeRow(node, onClick) {
+  const row = document.createElement("div");
+  row.className = "r-row";
+  const ico = document.createElement("span");
+  ico.className = "r-ico";
+  ico.textContent = node.type === "dir" ? "📁" : "📄";
+  const nm = document.createElement("span");
+  nm.className = "r-name";
+  nm.textContent = node.name;
+  const pth = document.createElement("span");
+  pth.className = "r-path";
+  pth.textContent = node.path;
+  row.append(ico, nm, pth);
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+function markSeg(kind) {
+  $("#count")
+    .querySelectorAll(".c-seg")
+    .forEach((s) => s.classList.toggle("active", s.dataset.kind === kind));
+}
+
+// liste de recherche (≤300, flux simple) — comportement inchangé
 function renderResults() {
   if (!scene) return;
   const results = $("#results");
+  results.classList.remove("virtual");
   results.innerHTML = "";
   const sel = new Set(scene.isIsolated());
   for (const node of lastMatches) {
-    const row = document.createElement("div");
-    row.className = "r-row" + (sel.has(node) ? " selected" : "");
-    const ico = document.createElement("span");
-    ico.className = "r-ico";
-    ico.textContent = node.type === "dir" ? "📁" : "📄";
-    const nm = document.createElement("span");
-    nm.className = "r-name";
-    nm.textContent = node.name;
-    const pth = document.createElement("span");
-    pth.className = "r-path";
-    pth.textContent = node.path;
-    row.append(ico, nm, pth);
-    row.addEventListener("click", () => scene.toggleIsolated(node));
+    const row = makeRow(node, () => scene.toggleIsolated(node));
+    if (sel.has(node)) row.classList.add("selected");
     results.appendChild(row);
   }
   if (lastMatchTotal > lastMatches.length) {
@@ -89,17 +106,102 @@ function renderResults() {
   }
 }
 
+// liste d'une branche isolée (complète, virtualisée au scroll)
+function renderIsoList(nodes) {
+  const results = $("#results");
+  results.classList.add("virtual");
+  if (virtScroll) {
+    results.removeEventListener("scroll", virtScroll);
+    virtScroll = null;
+  }
+  results.innerHTML = "";
+  const sizer = document.createElement("div");
+  sizer.className = "r-sizer";
+  sizer.style.height = nodes.length * ROW_H + "px";
+  results.appendChild(sizer);
+
+  const onRow = (node, ev) => {
+    if (node.type === "dir") {
+      scene.setIsolated(node); // drill-down
+    } else {
+      openFileBubble(node, ev.clientX, ev.clientY);
+      scene.flyTo(node);
+    }
+  };
+
+  const viewH = Math.round(innerHeight * 0.4); // = max-height: 40vh
+  const BUFFER = 6;
+  const rowEls = new Map();
+  let start0 = -1,
+    end0 = -1;
+
+  const paint = () => {
+    const start = Math.max(0, Math.floor(results.scrollTop / ROW_H) - BUFFER);
+    const count = Math.ceil(viewH / ROW_H) + BUFFER * 2;
+    const end = Math.min(nodes.length, start + count);
+    if (start === start0 && end === end0) return;
+    for (const [i, el] of rowEls) {
+      if (i < start || i >= end) {
+        el.remove();
+        rowEls.delete(i);
+      }
+    }
+    for (let i = start; i < end; i++) {
+      if (rowEls.has(i)) continue;
+      const node = nodes[i];
+      const row = makeRow(node, (ev) => onRow(node, ev));
+      row.style.top = i * ROW_H + "px";
+      results.appendChild(row);
+      rowEls.set(i, row);
+    }
+    start0 = start;
+    end0 = end;
+  };
+
+  let raf = false;
+  virtScroll = () => {
+    if (raf) return;
+    raf = true;
+    requestAnimationFrame(() => {
+      raf = false;
+      paint();
+    });
+  };
+  results.addEventListener("scroll", virtScroll);
+  results.scrollTop = 0;
+  paint();
+}
+
 function openResults() {
   resultsOpen = true;
+  resultsMode = "search";
   $("#results").classList.add("open");
   $("#count").classList.add("open");
   renderResults();
 }
 
+function openIsoList(kind) {
+  if (!scene) return;
+  const { files, dirs } = scene.getIsolatedContents();
+  resultsOpen = true;
+  resultsMode = "iso-" + kind;
+  $("#results").classList.add("open");
+  $("#count").classList.remove("open"); // pas de chevron en isolation
+  markSeg(kind);
+  renderIsoList(kind === "files" ? files : dirs);
+}
+
 function closeResults() {
   resultsOpen = false;
-  $("#results").classList.remove("open");
+  resultsMode = null;
+  const results = $("#results");
+  results.classList.remove("open", "virtual");
   $("#count").classList.remove("open");
+  if (virtScroll) {
+    results.removeEventListener("scroll", virtScroll);
+    virtScroll = null;
+  }
+  markSeg(null);
 }
 
 // ---- callbacks scène ------------------------------------------------------
@@ -134,20 +236,42 @@ const callbacks = {
     openIsland(isl);
   },
   onCounts({ match, total, isolated, matches }) {
-    const st = scene ? scene.getStats() : null;
-    const searching = match < total;
-    $("#count").textContent = isolated
-      ? isolated
-      : searching
+    const cnt = $("#count");
+    if (isolated) {
+      const { files, dirs } = scene
+        ? scene.getIsolatedContents()
+        : { files: [], dirs: [] };
+      const seg = (n, s, p) =>
+        `<span class="c-seg" data-kind="${s}">${n} ${n > 1 ? p : p.slice(0, -1)}</span>`;
+      cnt.innerHTML =
+        `<span class="c-name">${escapeHtml(isolated)}</span> · ` +
+        `${seg(files.length, "files", "fichiers")} · ` +
+        `${seg(dirs.length, "dirs", "dossiers")}`;
+      cnt.classList.remove("has-results");
+      lastMatches = [];
+      lastMatchTotal = 0;
+      if (resultsMode === "iso-files" || resultsMode === "iso-dirs") {
+        const k = resultsMode === "iso-files" ? "files" : "dirs";
+        markSeg(k);
+        renderIsoList(k === "files" ? files : dirs);
+      } else if (resultsMode === "search") {
+        closeResults();
+      }
+    } else {
+      if (resultsMode && resultsMode.startsWith("iso")) closeResults();
+      const st = scene ? scene.getStats() : null;
+      const searching = match < total;
+      cnt.textContent = searching
         ? `${match} / ${total} éléments`
         : st
           ? `${st.containers} conteneurs · ${st.files} fichiers · ${st.dirs} dossiers`
           : `${total} éléments`;
-    $("#count").classList.toggle("has-results", searching);
-    lastMatches = matches || [];
-    lastMatchTotal = match;
-    if (!searching) closeResults();
-    else if (resultsOpen) renderResults();
+      cnt.classList.toggle("has-results", searching);
+      lastMatches = matches || [];
+      lastMatchTotal = match;
+      if (!searching) closeResults();
+      else if (resultsOpen && resultsMode === "search") renderResults();
+    }
     const chip = $("#isolate-chip");
     if (isolated) {
       chip.classList.add("show");
@@ -249,7 +373,14 @@ document.body.dataset.theme = "parchment";
 scene.setTheme("parchment");
 
 // ---- search -----------------------------------------------------------------
-$("#count").addEventListener("click", () => {
+$("#count").addEventListener("click", (e) => {
+  const seg = e.target.closest(".c-seg");
+  if (seg) {
+    const mode = "iso-" + seg.dataset.kind;
+    if (resultsOpen && resultsMode === mode) closeResults();
+    else openIsoList(seg.dataset.kind);
+    return;
+  }
   if ($("#count").classList.contains("has-results")) {
     resultsOpen ? closeResults() : openResults();
   }
