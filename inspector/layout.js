@@ -40,8 +40,8 @@ export function layout(root, opts = {}) {
     {
       rootLen: 10,
       decay: 0.72,
-      rootSpread: 1.3,
-      childSpread: 0.95,
+      rootSpread: 1.5,
+      childSpread: 1.05,
       fileSpread: 0.7,
       lengthByMass: 0.5,
     },
