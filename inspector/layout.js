@@ -1,6 +1,8 @@
 // Pure-math 3D tree layout (multi-îlots). No THREE dependency.
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const MIN_DIR_Y = 0.06; // plancher relevé sur dir[1] : garantit dir[1] > 0 après renorm (y monotone croissant), aucune branche ne plonge sous le socle
+const FLOOR_Y = -1.3; // plancher des fleurs de fichiers, juste au-dessus de l'anneau (-1.6)
 
 function norm(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
@@ -37,10 +39,10 @@ export function layout(root, opts = {}) {
   const o = Object.assign(
     {
       rootLen: 10,
-      decay: 0.66,
-      rootSpread: 1.5,
-      childSpread: 0.9,
-      fileSpread: 0.5,
+      decay: 0.72,
+      rootSpread: 1.3,
+      childSpread: 0.95,
+      fileSpread: 0.7,
       lengthByMass: 0.5,
     },
     opts,
@@ -64,7 +66,7 @@ export function layout(root, opts = {}) {
     childDirs.forEach((c, i) => {
       const theta = n <= 1 ? spread * 0.35 : spread * Math.sqrt((i + 0.5) / n);
       const phi = i * GOLDEN + phase;
-      const dir = norm(
+      let dir = norm(
         add(
           scale(node.dir, Math.cos(theta)),
           add(
@@ -73,6 +75,7 @@ export function layout(root, opts = {}) {
           ),
         ),
       );
+      if (dir[1] < MIN_DIR_Y) dir = norm([dir[0], MIN_DIR_Y, dir[2]]);
       const mass = Math.log2(c.count + 2);
       const baseLen = o.rootLen * Math.pow(o.decay, node.depth);
       const len =
@@ -101,6 +104,7 @@ export function layout(root, opts = {}) {
         add(scale(U, sph[0]), scale(V, sph[2])),
       );
       f.pos = add(tip, scale(norm(local), r));
+      if (f.pos[1] < FLOOR_Y) f.pos[1] = FLOOR_Y;
       f.dir = node.dir;
     });
   }
