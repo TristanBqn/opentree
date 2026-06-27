@@ -1,7 +1,7 @@
 // Pure-math 3D tree layout (multi-îlots). No THREE dependency.
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-const MIN_DIR_Y = 0.06; // ~3,4° au-dessus de l'horizontale : aucune branche ne plonge
+const MIN_DIR_Y = 0.06; // plancher relevé sur dir[1] : garantit dir[1] > 0 après renorm (y monotone croissant), aucune branche ne plonge sous le socle
 const FLOOR_Y = -1.3; // plancher des fleurs de fichiers, juste au-dessus de l'anneau (-1.6)
 
 function norm(v) {
