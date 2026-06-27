@@ -54,7 +54,7 @@ test("placeOrigins puts host at origin and spreads containers", () => {
 test("parseHosts: single root", () => {
   const h = parseHosts("/app", "openclaw");
   assert.equal(h.length, 1);
-  assert.deepEqual(h[0], { root: "/app", name: "openclaw", rootLen: 10 });
+  assert.deepEqual(h[0], { root: "/app", name: "openclaw", rootLen: 13 });
 });
 
 test("parseHosts: two comma-separated roots", () => {

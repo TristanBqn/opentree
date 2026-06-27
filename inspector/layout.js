@@ -39,10 +39,10 @@ export function layout(root, opts = {}) {
   const o = Object.assign(
     {
       rootLen: 10,
-      decay: 0.66,
-      rootSpread: 1.5,
-      childSpread: 0.9,
-      fileSpread: 0.5,
+      decay: 0.72,
+      rootSpread: 1.3,
+      childSpread: 0.95,
+      fileSpread: 0.7,
       lengthByMass: 0.5,
     },
     opts,
