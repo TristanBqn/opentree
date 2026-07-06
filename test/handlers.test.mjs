@@ -136,6 +136,73 @@ test("serves a static file and 404s a traversal attempt", async () => {
   });
 });
 
+test("gzips compressible static files and sends cache headers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-"));
+  const big = "<h1>ok</h1>" + "x".repeat(2048); // > 1 KiB → gzip eligible
+  await writeFile(join(dir, "OpenTree.html"), big);
+  const cache = createSnapshotCache({ build: async () => ({ generatedAt: 1 }) });
+  const handler = createRequestHandler({ staticDir: dir, cache, prefix: "" });
+  await withServer(handler, async (base) => {
+    const r = await rawGet(base, "/OpenTree.html", {
+      "accept-encoding": "gzip",
+    });
+    assert.equal(r.headers["content-encoding"], "gzip");
+    assert.equal(r.headers["cache-control"], "no-cache");
+    assert.ok(r.headers["etag"]);
+    assert.equal(zlib.gunzipSync(r.body).toString(), big);
+    // sans gzip → contenu brut
+    const plain = await rawGet(base, "/OpenTree.html", {
+      "accept-encoding": "identity",
+    });
+    assert.equal(plain.headers["content-encoding"], undefined);
+    assert.equal(plain.body.toString(), big);
+  });
+});
+
+test("answers 304 on matching If-None-Match", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-"));
+  await writeFile(join(dir, "OpenTree.html"), "<h1>ok</h1>");
+  const cache = createSnapshotCache({ build: async () => ({ generatedAt: 1 }) });
+  const handler = createRequestHandler({ staticDir: dir, cache, prefix: "" });
+  await withServer(handler, async (base) => {
+    const r1 = await rawGet(base, "/OpenTree.html", {});
+    const etag = r1.headers["etag"];
+    assert.ok(etag);
+    const r2 = await rawGet(base, "/OpenTree.html", { "if-none-match": etag });
+    assert.equal(r2.status, 304);
+    assert.equal(r2.body.length, 0);
+  });
+});
+
+test("serves updated content after a static file changes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-"));
+  const f = join(dir, "OpenTree.html");
+  await writeFile(f, "v1");
+  const cache = createSnapshotCache({ build: async () => ({ generatedAt: 1 }) });
+  const handler = createRequestHandler({ staticDir: dir, cache, prefix: "" });
+  await withServer(handler, async (base) => {
+    assert.equal((await rawGet(base, "/OpenTree.html", {})).body.toString(), "v1");
+    await writeFile(f, "v2 — plus long"); // taille différente → cache invalidé
+    assert.equal(
+      (await rawGet(base, "/OpenTree.html", {})).body.toString(),
+      "v2 — plus long",
+    );
+  });
+});
+
+test("marks vendor files immutable", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ot-"));
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(join(dir, "vendor"));
+  await writeFile(join(dir, "vendor", "lib.js"), "export const x = 1;");
+  const cache = createSnapshotCache({ build: async () => ({ generatedAt: 1 }) });
+  const handler = createRequestHandler({ staticDir: dir, cache, prefix: "" });
+  await withServer(handler, async (base) => {
+    const r = await rawGet(base, "/vendor/lib.js", {});
+    assert.match(r.headers["cache-control"], /immutable/);
+  });
+});
+
 test("redirects the bare prefix to the trailing-slash root", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ot-"));
   await writeFile(join(dir, "OpenTree.html"), "<h1>ok</h1>");
