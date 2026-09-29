@@ -386,12 +386,18 @@ $("#count").addEventListener("click", (e) => {
   }
 });
 const search = $("#search");
+// refresh() parcourt tous les fichiers : on débounce la frappe (~80 ms)
+let searchTimer = 0;
 search.addEventListener("input", () => {
-  if (scene.isIsolated().length) scene.setIsolated(null);
-  scene.setQuery(search.value);
   $("#search-clear").classList.toggle("show", !!search.value);
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (scene.isIsolated().length) scene.setIsolated(null);
+    scene.setQuery(search.value);
+  }, 80);
 });
 $("#search-clear").addEventListener("click", () => {
+  clearTimeout(searchTimer);
   search.value = "";
   scene.setQuery("");
   $("#search-clear").classList.remove("show");

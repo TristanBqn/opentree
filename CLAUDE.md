@@ -48,7 +48,7 @@ Each island's tree is laid out independently then translated to `origin`. Usage 
 
 ## Key invariants
 
-- THREE.js is loaded from CDN via importmap (`three@0.160.0` on jsdelivr) — no local install.
+- THREE.js is vendored via importmap (`inspector/vendor/three.module.min.js`, minified build of `three@0.160.0`) — no CDN, no local install. Fonts are also self-hosted (`inspector/vendor/fonts/`).
 - All random generation uses `mulberry32(0xC0FFEE)` — deterministic, call order matters.
 - Node IDs (`idc` counter) must be stable across a session; `buildProject()` / `buildArchitecture()` reset `idc = 0` at the top.
 - Branch color assignment: `cidx = (bid * stride) % paletteLen` with `stride = 3` to spread hues.

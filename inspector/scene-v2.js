@@ -434,21 +434,22 @@ export function createScene(container, callbacks = {}, islands = []) {
   function buildGlows() {
     glowSprites.forEach((s) => sceneRoot.remove(s));
     glowSprites = [];
+    // regroupement par branche en un passage (au lieu de 2 boucles par branche)
+    const byBid = new Map();
+    files.forEach((f) => {
+      let g = byBid.get(f.bid);
+      if (!g) byBid.set(f.bid, (g = []));
+      g.push(f);
+    });
     branches.forEach((b) => {
-      let k = 0,
-        maxd = 0;
+      const group = byBid.get(b.bid);
+      if (!group) return;
       const ctr = new THREE.Vector3();
-      files.forEach((f) => {
-        if (f.bid === b.bid) {
-          ctr.add(new THREE.Vector3(...f.pos));
-          k++;
-        }
-      });
-      if (k === 0) return;
-      ctr.multiplyScalar(1 / k);
-      files.forEach((f) => {
-        if (f.bid === b.bid)
-          maxd = Math.max(maxd, ctr.distanceTo(new THREE.Vector3(...f.pos)));
+      group.forEach((f) => ctr.add(new THREE.Vector3(...f.pos)));
+      ctr.multiplyScalar(1 / group.length);
+      let maxd = 0;
+      group.forEach((f) => {
+        maxd = Math.max(maxd, ctr.distanceTo(new THREE.Vector3(...f.pos)));
       });
       const sp = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -663,12 +664,14 @@ export function createScene(container, callbacks = {}, islands = []) {
     const col = points.geometry.attributes.color.array;
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      const vis = fileVisible(f);
+      // un seul test de nom par fichier : sert à la fois à la visibilité et au comptage
+      const m = query ? nameMatches(f, query) : false;
+      const vis = isolatedNodes.length ? isoFiles.has(f) : query ? m : true;
       col[i * 4] = baseCol[i * 4];
       col[i * 4 + 1] = baseCol[i * 4 + 1];
       col[i * 4 + 2] = baseCol[i * 4 + 2];
       col[i * 4 + 3] = vis ? 1 : 0.075;
-      if (query && nameMatches(f, query)) {
+      if (m) {
         nFileMatch++;
         if (matches.length < CAP) matches.push(f);
       }
@@ -753,12 +756,23 @@ export function createScene(container, callbacks = {}, islands = []) {
     applyColors();
     refresh();
   }
+  // le slider "courbure" émet des events input en continu pendant le glissement ;
+  // reconstruire toute la géométrie des branches à chaque tick sature le thread —
+  // on débounce la reconstruction
+  let curveTimer = 0;
   function setOption(k, v) {
     opts[k] = v;
     if (k === "autoRotate") controls.autoRotate = v;
-    if (k === "curve") buildBranches();
+    if (k === "curve") {
+      clearTimeout(curveTimer);
+      curveTimer = setTimeout(() => {
+        buildBranches();
+        applyColors();
+        refresh();
+      }, 80);
+      return;
+    }
     if (k === "glow" || k === "fileSize") applyColors();
-    if (k === "curve") applyColors();
     refresh();
   }
   function applyIsolation(nodes) {
