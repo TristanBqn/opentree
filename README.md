@@ -12,7 +12,7 @@ Visualisation 3D des fichiers, dossiers et conteneurs Docker, directement dans l
 
 ![Vue d'ensemble d'OpenTree : les arborescences prennent la forme d'îles et de branches colorées](docs/images/opentree-overview.png)
 
-<p align="center"><sub>Capture de la démonstration publiée par l'auteur. Les chiffres visibles correspondent à son instance au moment de l'enregistrement.</sub></p>
+<p align="center"><sub> Arbre de visualisation d'OpenTree. Les chiffres visibles correspondent à mon instance au moment de l'enregistrement.</sub></p>
 
 ## Pourquoi OpenTree ?
 
